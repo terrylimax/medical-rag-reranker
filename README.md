@@ -24,6 +24,38 @@ This score is used to rank retrieved documents inside the RAG pipeline.
 
 ---
 
+## Quickstart for Reviewers (Checklist)
+
+The project is set up so a reviewer can validate it end-to-end with the steps below.
+
+1. Clone the repository
+   ```bash
+   git clone https://github.com/terrylimax/medical-rag-reranker.git
+   cd medical-rag-reranker
+   ```
+2. Create a clean environment and install dependencies
+   ```bash
+   poetry install
+   ```
+3. Install git hooks
+   ```bash
+   poetry run pre-commit install
+   ```
+4. Run all checks
+   ```bash
+   poetry run pre-commit run -a
+   ```
+5. (Optional) Start MLflow UI locally
+   ```bash
+   poetry run mlflow ui --host 127.0.0.1 --port 8080
+   ```
+6. Run training
+   ```bash
+   poetry run python -m medical_rag_reranker.commands train
+   ```
+
+Expected result: the training run finishes successfully and `train/loss` decreases over time.
+
 ## Repository Structure
 
 ```text
@@ -56,14 +88,6 @@ medical-rag-reranker/
 ```
 
 ---
-
-## Recent Changes (Dec 2025)
-
-- Config-driven CLI: training/inference now run via Hydra configs in `configs/` with a Fire-based entrypoint (`python -m medical_rag_reranker.commands ...`).
-- Robust overrides: `--overrides` supports a single override, comma/space-separated overrides, or a JSON list.
-- DVC integration: `train` and `infer` try `dvc pull` first, then fall back to downloading open datasets, then `dvc add/push` to the local remote.
-- MLflow logging: Lightning logs hyperparameters (including `git.commit_id`) and metrics to the tracking server configured in `configs/logging/mlflow.yaml` (default `http://127.0.0.1:8080`).
-- Extra metrics: validation now logs `val/auroc` and `val/f1` in addition to `train/loss` and `val/loss` (>= 3 charts in MLflow).
 
 ## Setup
 
@@ -127,7 +151,8 @@ Negatives are constructed as:
 
 ## Training
 
-Training is implemented using Lightning and configured with Hydra.
+Training is implemented using Lightning and configured with Hydra. The entrypoint is Fire-based:
+`python -m medical_rag_reranker.commands train`.
 
 To start training:
 
@@ -146,6 +171,11 @@ poetry run python -m medical_rag_reranker.commands train --overrides "train.max_
 
 # JSON list also supported
 poetry run python -m medical_rag_reranker.commands train --overrides '["train.max_epochs=2","train.batch_size=16"]'
+
+Supported override formats:
+- single override string
+- comma/space-separated overrides
+- JSON list
 ```
 
 What happens under the hood:
@@ -181,7 +211,7 @@ Training is logged to **MLflow** via Lightning's `MLFlowLogger`.
 
 - Tracking URI is configured in `configs/logging/mlflow.yaml` (default: `http://127.0.0.1:8080`).
 - Logged hyperparameters include key config values plus `git.commit_id`.
-- Logged metrics include at least: `train/loss`, `val/loss`, `val/auroc`, `val/f1`.
+- Logged metrics include at least: `train/loss`, `val/loss`, `val/auroc`, `val/f1` (>= 3 charts in MLflow).
 
 Start the MLflow UI locally:
 
