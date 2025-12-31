@@ -1,0 +1,34 @@
+[project]
+name = "medical-rag-reranker"
+version = "0.1.0"
+description = "Training a cross-encoder reranker for a medical RAG system"
+authors = [
+    {name = "Dmitrii Todorov",email = "todorov.dmitrii.a@gmail.com"}
+]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "torch (>=2.9.1,<3.0.0)",
+    "lightning (>=2.6.0,<3.0.0)",
+    "transformers (>=4.57.3,<5.0.0)",
+    "datasets (>=4.4.2,<5.0.0)",
+    "tokenizers (>=0.22.1,<0.23.0)",
+    "hydra-core (>=1.3.2,<2.0.0)",
+    "omegaconf (>=2.3.0,<3.0.0)",
+    "fire (>=0.7.0,<0.8.0)",
+    "dvc (>=3.0.0,<4.0.0)",
+    "mlflow (>=3.8.1,<4.0.0)",
+    "torchmetrics (>=1.8.2,<2.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pre-commit (>=4.5.1,<5.0.0)",
+    "ruff (>=0.14.10,<0.15.0)"
+]

@@ -1,0 +1,4 @@
+# Model + tokenization settings
+model_name: microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract
+max_length: 256
+negatives_per_query: 4

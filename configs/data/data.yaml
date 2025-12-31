@@ -1,0 +1,6 @@
+# Data-related settings
+raw_dir: data/raw
+
+# DVC settings
+use_dvc: true
+dvc_remote: local

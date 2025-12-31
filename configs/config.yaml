@@ -1,0 +1,14 @@
+# Root Hydra config
+# Usage examples:
+#   python -m medical_rag_reranker.commands train
+#   python -m medical_rag_reranker.commands train --overrides '["train.max_epochs=2","train.batch_size=16"]'
+#   python -m medical_rag_reranker.commands download_data
+#
+# You can also pass config_dir to point to another configs folder.
+
+defaults:
+  - data: data
+  - model: model
+  - train: train
+  - logging: mlflow
+  - _self_
