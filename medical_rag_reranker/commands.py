@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Optional, Sequence
 
 import fire
-from hydra import compose, initialize_config_dir
 from omegaconf import DictConfig
 
 from medical_rag_reranker.data.dvc_data import ensure_data
 from medical_rag_reranker.inference.infer import infer_from_cfg
+from medical_rag_reranker.commands.retrieval_run import run_from_cfg as retrieval_run_from_cfg
 from medical_rag_reranker.training.train import train_from_cfg
+from medical_rag_reranker.utils.hydra_cfg import load_cfg
 
 
 def _load_cfg(
@@ -18,32 +18,8 @@ def _load_cfg(
     config_name: str = "config",
     overrides: Optional[str | Sequence[str]] = None,
 ) -> DictConfig:
-    """Load Hydra config from ./configs (repo root) by default."""
-    repo_root = Path(__file__).resolve().parents[1]
-    cfg_dir = Path(config_dir) if config_dir else (repo_root / "configs")
-
-    override_list: list[str] = []
-
-    if overrides:
-        if isinstance(overrides, (list, tuple)):
-            override_list = [str(x) for x in overrides]
-        else:
-            overrides_str = str(overrides).strip()
-            # Allow passing JSON list: --overrides '["train.max_epochs=2","train.batch_size=16"]'
-            if overrides_str.startswith("["):
-                override_list = [str(x) for x in json.loads(overrides_str)]
-            else:
-                # Allow simple comma-separated or space-separated values
-                # Example: --overrides 'train.max_epochs=2,train.batch_size=16'
-                # Example: --overrides 'train.max_epochs=2 train.batch_size=16'
-                normalized = overrides_str.replace(",", " ")
-                override_list = [
-                    part for part in (p.strip() for p in normalized.split()) if part
-                ]
-
-    with initialize_config_dir(version_base=None, config_dir=str(cfg_dir)):
-        cfg = compose(config_name=config_name, overrides=override_list)
-    return cfg
+    """Backward-compatible wrapper around `medical_rag_reranker.utils.hydra_cfg.load_cfg`."""
+    return load_cfg(config_dir=config_dir, config_name=config_name, overrides=overrides)
 
 
 def main() -> None:
@@ -64,6 +40,7 @@ def main() -> None:
             "download_data": cmd_download_data,
             "train": cmd_train,
             "infer": cmd_infer,
+            "retrieval_run": cmd_retrieval_run,
         }
     )
 
@@ -104,6 +81,18 @@ def cmd_infer(
     )
     print(score)
     return score
+
+
+def cmd_retrieval_run(
+    config_dir: Optional[str] = None, overrides: Optional[str] = None
+) -> None:
+    """Run the configured retriever over queries and write a TREC run file."""
+    cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
+
+    # Ensure data exists (queries/corpus may be managed via DVC)
+    ensure_data(cfg)
+
+    retrieval_run_from_cfg(cfg)
 
 
 if __name__ == "__main__":
