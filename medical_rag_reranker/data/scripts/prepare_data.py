@@ -19,6 +19,8 @@ import csv
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 
+from datasets import load_dataset
+
 
 SEED = 42
 TRAIN_RATIO = 0.8
@@ -30,8 +32,8 @@ EVAL_SIZE = 300  # набор запросов для промежуточных
 
 def read_nih_qa(path: Path) -> List[Dict[str, Any]]:
     """
-    Читает QA-данные из JSONL или CSV (MedQuAD).
-    Важно: вернуть список dict с полями question_id, question, answer, source, topic (опционально).
+    Читает QA-данные из JSONL или CSV(MedQuAD)
+    Возвращает список dict с полями question_id, question, answer, source, topic.
     """
     data: List[Dict[str, Any]] = []
 
@@ -46,13 +48,15 @@ def read_nih_qa(path: Path) -> List[Dict[str, Any]]:
         with path.open("r", encoding="utf-8") as f:
             for idx, line in enumerate(f):
                 obj = json.loads(line)
-                data.append({
-                    "question_id": obj.get("question_id") or str(idx),
-                    "question": obj.get("question"),
-                    "answer": obj.get("answer"),
-                    "source": obj.get("source", "NIH"),
-                    "topic": obj.get("topic"),
-                })
+                data.append(
+                    {
+                        "question_id": obj.get("question_id") or str(idx),
+                        "question": obj.get("question"),
+                        "answer": obj.get("answer"),
+                        "source": obj.get("source", "MedQuAD"),
+                        "topic": obj.get("topic"),
+                    }
+                )
         return data
 
     if suffix == ".csv":
@@ -64,13 +68,39 @@ def read_nih_qa(path: Path) -> List[Dict[str, Any]]:
                 source = pick(row, ["source"]) or "MedQuAD"
                 topic = pick(row, ["focus_area"])
 
-                data.append({
-                    "question_id": row.get("question_id") or row.get("id") or str(idx),
-                    "question": question,
-                    "answer": answer,
-                    "source": source,
-                    "topic": topic,
-                })
+                data.append(
+                    {
+                        "question_id": row.get("question_id")
+                        or row.get("id")
+                        or str(idx),
+                        "question": question,
+                        "answer": answer,
+                        "source": source,
+                        "topic": topic,
+                    }
+                )
+        return data
+
+    if suffix == ".parquet":
+        # Keep this path dependency-light by using datasets parquet loader.
+        ds = load_dataset("parquet", data_files=str(path), split="train")
+        for idx, row in enumerate(ds):
+
+            def pick(keys: List[str]) -> Any:
+                for key in keys:
+                    if key in row and row[key] not in (None, ""):
+                        return row[key]
+                return None
+
+            data.append(
+                {
+                    "question_id": pick(["question_id", "id"]) or str(idx),
+                    "question": pick(["question", "q"]),
+                    "answer": pick(["answer", "a"]),
+                    "source": pick(["source"]) or "MedQuAD",
+                    "topic": pick(["topic", "focus_area"]),
+                }
+            )
         return data
 
     raise ValueError(f"Unsupported file format: {suffix}")
@@ -83,7 +113,9 @@ def write_jsonl(path: Path, rows: List[Dict[str, Any]]) -> None:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
-def write_splits(path: Path, train_ids: List[str], val_ids: List[str], test_ids: List[str]) -> None:
+def write_splits(
+    path: Path, train_ids: List[str], val_ids: List[str], test_ids: List[str]
+) -> None:
     obj = {"seed": SEED, "train": train_ids, "val": val_ids, "test": test_ids}
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -98,8 +130,8 @@ def make_splits(ids: List[str]) -> Tuple[List[str], List[str], List[str]]:
     n_train = int(n * TRAIN_RATIO)
     n_val = int(n * VAL_RATIO)
     train_ids = ids[:n_train]
-    val_ids = ids[n_train:n_train + n_val]
-    test_ids = ids[n_train + n_val:]
+    val_ids = ids[n_train : n_train + n_val]
+    test_ids = ids[n_train + n_val :]
     # sanity
     assert len(set(train_ids) & set(val_ids)) == 0
     assert len(set(train_ids) & set(test_ids)) == 0
@@ -113,12 +145,14 @@ def build_corpus_from_answers(qa_rows: List[Dict[str, Any]]) -> List[Dict[str, A
         qid = r["question_id"]
         source = r.get("source", "nih").lower()
 
-        corpus.append({
-            "doc_id": f"{source}_ans_{qid}",
-            "text": r["answer"],
-            "source": source.upper(),
-            "question_id": qid,
-        })
+        corpus.append(
+            {
+                "doc_id": f"{source}_ans_{qid}",
+                "text": r["answer"],
+                "source": source.upper(),
+                "question_id": qid,
+            }
+        )
     return corpus
 
 
@@ -138,7 +172,9 @@ def build_eval_pack(
     rng.shuffle(candidates)
     chosen = candidates[: min(eval_size, len(candidates))]
 
-    eval_queries = [{"query_id": r["question_id"], "question": r["question"]} for r in chosen]
+    eval_queries = [
+        {"query_id": r["question_id"], "question": r["question"]} for r in chosen
+    ]
 
     # qrels: единственный релевантный doc — answer-doc этого вопроса
     qrels_lines = []
@@ -146,47 +182,130 @@ def build_eval_pack(
         source = r.get("source", "nih").lower()
         doc_id = f"{source}_ans_{r['question_id']}"
         qrels_lines.append(f'{r["question_id"]}\t0\t{doc_id}\t1')
-    
+
     return eval_queries, qrels_lines
+
+
+def filter_valid_qa_rows(qa_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Keep only rows with non-empty question and answer text."""
+    cleaned: List[Dict[str, Any]] = []
+    for row in qa_rows:
+        question = str(row.get("question") or "").strip()
+        answer = str(row.get("answer") or "").strip()
+        if not question or not answer:
+            continue
+        copied = dict(row)
+        copied["question"] = question
+        copied["answer"] = answer
+        cleaned.append(copied)
+    return cleaned
+
+
+def ensure_unique_question_ids(qa_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Ensure question_id is unique and non-empty across rows.
+
+    Some sources (e.g. MedQuAD parquet) may reuse `id` values.
+    We keep the original id when possible and suffix duplicates deterministically.
+    """
+    seen: set[str] = set()
+    duplicate_counters: dict[str, int] = {}
+    normalized: List[Dict[str, Any]] = []
+
+    for idx, row in enumerate(qa_rows):
+        copied = dict(row)
+        base = str(copied.get("question_id") or "").strip() or f"q_{idx}"
+        qid = base
+
+        if qid in seen:
+            next_idx = duplicate_counters.get(base, 1)
+            while True:
+                candidate = f"{base}__dup{next_idx}"
+                next_idx += 1
+                if candidate not in seen:
+                    qid = candidate
+                    duplicate_counters[base] = next_idx
+                    break
+
+        seen.add(qid)
+        copied["question_id"] = qid
+        normalized.append(copied)
+
+    return normalized
+
+
+def prepare_data(
+    raw_nih_path: str,
+    out_dir: str,
+    eval_size: int = EVAL_SIZE,
+    seed: int = SEED,
+) -> Dict[str, Any]:
+    """Build baseline retrieval artifacts from NIH QA data."""
+    global SEED
+    prev_seed = SEED
+    SEED = int(seed)
+
+    raw_path = Path(raw_nih_path)
+    out_root = Path(out_dir)
+    qa_out = out_root / "qa.jsonl"
+    corpus_out = out_root / "corpus.jsonl"
+    splits_out = out_root / "splits.json"
+    eval_queries_out = out_root / "eval_queries.jsonl"
+    qrels_out = out_root / "qrels.tsv"
+
+    try:
+        qa_rows = ensure_unique_question_ids(
+            filter_valid_qa_rows(read_nih_qa(raw_path))
+        )
+
+        # 1) qa.jsonl
+        write_jsonl(qa_out, qa_rows)
+
+        # 2) splits.json
+        ids = [r["question_id"] for r in qa_rows]
+        train_ids, val_ids, test_ids = make_splits(ids)
+        write_splits(splits_out, train_ids, val_ids, test_ids)
+
+        # 3) corpus.jsonl
+        corpus_rows = build_corpus_from_answers(qa_rows)
+        write_jsonl(corpus_out, corpus_rows)
+
+        # 4) eval pack
+        eval_queries, qrels_lines = build_eval_pack(qa_rows, test_ids, int(eval_size))
+        write_jsonl(eval_queries_out, eval_queries)
+        qrels_out.parent.mkdir(parents=True, exist_ok=True)
+        qrels_out.write_text("\n".join(qrels_lines) + "\n", encoding="utf-8")
+    finally:
+        SEED = prev_seed
+
+    return {
+        "qa_path": str(qa_out),
+        "corpus_path": str(corpus_out),
+        "splits_path": str(splits_out),
+        "eval_queries_path": str(eval_queries_out),
+        "qrels_path": str(qrels_out),
+        "num_qa_rows": len(qa_rows),
+        "num_corpus_docs": len(corpus_rows),
+        "num_eval_queries": len(eval_queries),
+        "num_qrels": len(qrels_lines),
+        "seed": int(seed),
+    }
 
 
 def main():
     # === ПУТИ: поменяй под свой репо ===
-    raw_nih_path = Path("data/raw/nih_qa.jsonl")   # <- подстрой
-    out_dir = Path("data/processed")
-
-    qa_out = out_dir / "qa.jsonl"
-    corpus_out = out_dir / "corpus.jsonl"
-    splits_out = out_dir / "splits.json"
-    eval_queries_out = out_dir / "eval_queries.jsonl"
-    qrels_out = out_dir / "qrels.tsv"
-
-    qa_rows = read_nih_qa(raw_nih_path)
-
-    # 1) qa.jsonl
-    write_jsonl(qa_out, qa_rows)
-
-    # 2) splits.json
-    ids = [r["question_id"] for r in qa_rows]
-    train_ids, val_ids, test_ids = make_splits(ids)
-    write_splits(splits_out, train_ids, val_ids, test_ids)
-
-    # 3) corpus.jsonl
-    corpus_rows = build_corpus_from_answers(qa_rows)
-    write_jsonl(corpus_out, corpus_rows)
-
-    # 4) eval pack
-    eval_queries, qrels_lines = build_eval_pack(qa_rows, test_ids, EVAL_SIZE)
-    write_jsonl(eval_queries_out, eval_queries)
-    qrels_out.parent.mkdir(parents=True, exist_ok=True)
-    qrels_out.write_text("\n".join(qrels_lines) + "\n", encoding="utf-8")
+    result = prepare_data(
+        raw_nih_path="data/raw/nih_qa.jsonl",
+        out_dir="data/processed",
+        eval_size=EVAL_SIZE,
+        seed=SEED,
+    )
 
     print("DONE")
-    print(f"- {qa_out} ({len(qa_rows)} rows)")
-    print(f"- {corpus_out} ({len(corpus_rows)} docs)")
-    print(f"- {splits_out}")
-    print(f"- {eval_queries_out} ({len(eval_queries)} queries)")
-    print(f"- {qrels_out} ({len(qrels_lines)} lines)")
+    print(f"- {result['qa_path']} ({result['num_qa_rows']} rows)")
+    print(f"- {result['corpus_path']} ({result['num_corpus_docs']} docs)")
+    print(f"- {result['splits_path']}")
+    print(f"- {result['eval_queries_path']} " f"({result['num_eval_queries']} queries)")
+    print(f"- {result['qrels_path']} ({result['num_qrels']} lines)")
 
 
 if __name__ == "__main__":

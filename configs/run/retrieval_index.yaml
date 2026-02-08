@@ -1,0 +1,5 @@
+corpus: ${run.prep_data.out_dir}/corpus.jsonl
+out: ${paths.artifacts_dir}/${retrieval.index_file}
+model: sentence-transformers/all-MiniLM-L6-v2
+alpha: 0.5
+cand_k: 50

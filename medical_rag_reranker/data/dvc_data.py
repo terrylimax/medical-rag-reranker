@@ -7,6 +7,20 @@ from omegaconf import DictConfig
 from medical_rag_reranker.data.download import download_data
 
 
+def _has_required_raw_artifacts(raw_dir: Path) -> bool:
+    """Check whether minimal QA raw artifacts are present.
+
+    For `prep_data`, having at least one QA source locally is enough:
+    - medquad parquet downloaded by `download_data`
+    - or a manually prepared NIH QA jsonl file.
+    """
+    required_any = [
+        raw_dir / "medquad" / "train.parquet",
+        raw_dir / "nih_qa.jsonl",
+    ]
+    return any(p.exists() for p in required_any)
+
+
 def ensure_data(cfg: DictConfig) -> None:
     """Ensure data exists locally.
 
@@ -32,8 +46,9 @@ def ensure_data(cfg: DictConfig) -> None:
         except Exception:
             pass
 
-    # If still missing, fall back to open-source download
-    if not raw_dir.exists():
+    # If still missing, fall back to open-source download.
+    # A pre-created empty directory is not enough; verify expected artifacts.
+    if not _has_required_raw_artifacts(raw_dir):
         download_data(str(raw_dir))
 
     if use_dvc:

@@ -241,6 +241,135 @@ poetry run python -m medical_rag_reranker.commands infer \
 
 ---
 
+## Baseline Generation (No Reranker)
+
+This project also supports a baseline `retriever + generation` flow (without cross-encoder reranking):
+
+- retrieve top-`k` docs with BM25 / dense / hybrid
+- build a context prompt
+- generate an answer with a local `transformers` model
+- require citations in `[doc_id]` format
+
+### Scenario A: Single question
+
+```bash
+poetry run python -m medical_rag_reranker.commands generate \
+  --question "What is metformin used for?"
+```
+
+Output:
+
+- generated answer
+- `citations_detected=[...]`
+
+### Scenario B: Batch examples report
+
+```bash
+poetry run python -m medical_rag_reranker.commands generate \
+  --overrides "generation.mode=batch,generation.examples_limit=20"
+```
+
+Default report path:
+
+- `reports/baseline_examples.md`
+
+You can override it:
+
+```bash
+poetry run python -m medical_rag_reranker.commands generate \
+  --output_path reports/my_examples.md \
+  --overrides "generation.mode=batch"
+```
+
+Notes:
+
+- Batch input JSONL should have `query_id` and either `text` or `question`.
+- Retrieval metrics (`Precision@k`, `Recall@k`, `NDCG@k`) remain the primary KPI.
+- Generation here is a quality/demo layer via curated examples.
+
+---
+
+## Offline Retrieval Evaluation
+
+This project includes a small CLI to evaluate retrieval runs against qrels using `pytrec_eval`.
+It computes mean Precision@k / Recall@k / NDCG@k and logs results to MLflow.
+
+### Scenario A: You already have a run file (`.trec`)
+
+```bash
+poetry run python -m medical_rag_reranker.commands.eval_retrieval \
+   --eval_queries data/eval_queries.jsonl \
+   --qrels data/qrels.tsv \
+   --run_path runs/bm25.run.trec \
+   --experiment retrieval_eval \
+   --retriever bm25 \
+   --top_k 100
+```
+
+### Scenario B: Generate the run by calling an external retriever
+
+Your retriever command must accept `--queries` and `--out` and write a TREC run file.
+Pass a command template to `--retrieve_cmd` with placeholders `{queries}` and `{out_run}`.
+
+```bash
+poetry run python -m medical_rag_reranker.commands.eval_retrieval \
+   --eval_queries data/eval_queries.jsonl \
+   --qrels data/qrels.tsv \
+   --retrieve_cmd "python -m medical_rag_reranker.commands.retrieval_run --retriever bm25 --index artifacts/bm25_index.json.gz --queries {queries} --out {out_run}" \
+   --experiment retrieval_eval \
+   --retriever bm25 \
+   --top_k 100
+```
+
+Notes:
+
+- Metrics are saved next to the run file as `*.metrics.json`.
+- If you see an error about missing `pytrec_eval`, add it to your environment dependencies.
+
+---
+
+## Baseline Retrieval Eval Checklist
+
+Use the unified Fire entrypoint to run baseline retrieval evaluation end-to-end:
+
+1. Prepare baseline artifacts (`qa/corpus/splits/eval_queries/qrels`):
+
+```bash
+poetry run python -m medical_rag_reranker.commands prep_data
+```
+
+2. Build index for current retriever (`bm25` / `dense` / `hybrid`):
+
+```bash
+poetry run python -m medical_rag_reranker.commands index --overrides "retrieval=hybrid"
+```
+
+3. (Optional) Generate TREC run file directly:
+
+```bash
+poetry run python -m medical_rag_reranker.commands retrieval_run --overrides "retrieval=hybrid"
+```
+
+4. Evaluate retrieval metrics and log to MLflow:
+
+```bash
+poetry run python -m medical_rag_reranker.commands eval_retrieval --overrides "retrieval=hybrid"
+```
+
+5. Run an end-to-end RAG demo (1 question by default, up to 5):
+
+```bash
+poetry run python -m medical_rag_reranker.commands rag_demo
+poetry run python -m medical_rag_reranker.commands rag_demo --overrides "run.rag_demo.num_questions=5"
+```
+
+Notes:
+
+- `medical_rag_reranker/retrieval/` and `configs/retrieval/` are already present in this repository.
+- A separate `medical_rag_reranker/evaluation/` package is not required for this baseline step.
+
+---
+
 ## License
 
 This project is provided for educational purposes.

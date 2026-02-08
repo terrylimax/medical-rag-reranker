@@ -1,15 +1,16 @@
 from dataclasses import dataclass
-from typing import List, Dict, Optional
+from typing import List, Optional
 import numpy as np
 
 from . import Retriever, ScoredDoc
+
 
 def minmax(scores: np.ndarray, mask: Optional[np.ndarray] = None) -> np.ndarray:
     """Min-max normalize scores to [0, 1].
 
     If `mask` is provided, statistics are computed only on `scores[mask]`.
     Elements where mask is False will be set to 0.0 in the output.
-    mask — булев массив той же длины, что и scores. 
+    mask — булев массив той же длины, что и scores.
     True означает “этот элемент реально пришёл из данного ретривера”, False — “это заглушка (missing)”.
     """
     scores = np.asarray(scores, dtype=np.float32)
@@ -22,7 +23,7 @@ def minmax(scores: np.ndarray, mask: Optional[np.ndarray] = None) -> np.ndarray:
     mask = np.asarray(mask, dtype=bool)
     if mask.shape != scores.shape:
         raise ValueError("mask must have the same shape as scores")
-    if not mask.any(): # если нет ни одного True
+    if not mask.any():  # если нет ни одного True
         return np.zeros_like(scores, dtype=np.float32)
 
     masked_scores = scores[mask]
@@ -35,6 +36,7 @@ def minmax(scores: np.ndarray, mask: Optional[np.ndarray] = None) -> np.ndarray:
     out = np.zeros_like(scores, dtype=np.float32)
     out[mask] = (scores[mask] - mn) / (mx - mn)
     return out
+
 
 @dataclass
 class HybridRetriever(Retriever):

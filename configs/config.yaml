@@ -11,7 +11,12 @@ defaults:
   - model: model
   - train: train
   - logging: mlflow
-  - paths: paths
+  - paths@paths
   - retrieval: bm25
-  - retrieval_run: retrieval_run
+  - run@retrieval_run: retrieval_run
+  - generation: generation
+  - run@run.prep_data: prep_data
+  - run@run.retrieval_index: retrieval_index
+  - run@run.eval_retrieval: eval_retrieval
+  - run@run.rag_demo: rag_demo
   - _self_

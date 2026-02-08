@@ -7,7 +7,7 @@ Inputs
 ------
 - `--queries`: JSONL with objects containing:
     - `query_id`: identifier (string/int)
-    - `text`: query text
+    - `text` or `question`: query text
 - `--index`:
     - `bm25`: path to saved BM25 retriever file (e.g. `.json`/`.json.gz`)
     - `dense`: path to saved Dense index file (currently `.pkl`)
@@ -54,12 +54,11 @@ Hybrid (directory shortcut):
 
 import argparse
 import json
-import os
 from pathlib import Path
 
+from omegaconf import DictConfig
+
 from medical_rag_reranker.retrieval.bm25 import BM25Retriever
-from medical_rag_reranker.retrieval.dense import DenseRetriever
-from medical_rag_reranker.retrieval.hybrid import HybridRetriever
 
 
 def _resolve_manifest_path(index_arg: str) -> Path:
@@ -77,13 +76,45 @@ def _resolve_manifest_path(index_arg: str) -> Path:
     return p
 
 
-def _load_hybrid_from_manifest(manifest_path: Path) -> HybridRetriever:
+def _resolve_query_text(query_obj: dict) -> str:
+    """Return query text from either `text` (preferred) or `question`."""
+    text = query_obj.get("text")
+    if text:
+        return str(text)
+
+    question = query_obj.get("question")
+    if question:
+        return str(question)
+
+    raise ValueError("Query row must contain either `text` or `question`.")
+
+
+def _resolve_query_id(query_obj: dict) -> str:
+    """Return query id from `query_id` or fallback `question_id`."""
+    qid = query_obj.get("query_id")
+    if qid is None:
+        qid = query_obj.get("question_id")
+    if qid is None:
+        raise ValueError("Query row must contain `query_id` (or `question_id`).")
+    return str(qid)
+
+
+def _load_hybrid_from_manifest(manifest_path: Path):
     """Load a `HybridRetriever` from a hybrid manifest JSON.
 
     The manifest is expected to reference saved bm25/dense indices (paths may be
     relative to the manifest location) and store hybrid parameters like `alpha`
     and `cand_k`.
     """
+    try:
+        from medical_rag_reranker.retrieval.dense import DenseRetriever
+        from medical_rag_reranker.retrieval.hybrid import HybridRetriever
+    except Exception as e:
+        raise RuntimeError(
+            "Hybrid retriever requires `sentence-transformers`. "
+            "Install dependencies or switch to retrieval=bm25."
+        ) from e
+
     with open(manifest_path, "r", encoding="utf-8") as f:
         m = json.load(f)
 
@@ -111,12 +142,75 @@ def _load_hybrid_from_manifest(manifest_path: Path) -> HybridRetriever:
     )
 
 
+def _load_retriever(retriever_name: str, index_path: str):
+    if retriever_name == "bm25":
+        return BM25Retriever.load(index_path)
+    if retriever_name == "dense":
+        try:
+            from medical_rag_reranker.retrieval.dense import DenseRetriever
+        except Exception as e:
+            raise RuntimeError(
+                "Dense retriever requires `sentence-transformers`. "
+                "Install dependencies or switch to retrieval=bm25."
+            ) from e
+        return DenseRetriever.load(index_path)
+    if retriever_name == "hybrid":
+        manifest_path = _resolve_manifest_path(index_path)
+        return _load_hybrid_from_manifest(manifest_path)
+    raise ValueError(f"Unsupported retriever: {retriever_name}")
+
+
+def run_retrieval(
+    retriever_name: str,
+    index_path: str,
+    queries_path: str,
+    out_path: str,
+    top_k: int = 10,
+    run_name: str = "baseline",
+) -> Path:
+    """Run retrieval over a queries JSONL and write a TREC run file."""
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    retriever = _load_retriever(retriever_name=retriever_name, index_path=index_path)
+
+    # TREC format: query_id Q0 doc_id rank score run_name
+    with (
+        open(queries_path, "r", encoding="utf-8") as fq,
+        open(out, "w", encoding="utf-8") as fo,
+    ):
+        for line in fq:
+            if not line.strip():
+                continue
+            q = json.loads(line)
+            qid = _resolve_query_id(q)
+            text = _resolve_query_text(q)
+
+            hits = retriever.retrieve(text, top_k=int(top_k))
+            for rank, h in enumerate(hits, start=1):
+                fo.write(f"{qid}\tQ0\t{h.doc_id}\t{rank}\t{h.score:.6f}\t{run_name}\n")
+
+    return out
+
+
+def run_from_cfg(cfg: DictConfig) -> Path:
+    """Hydra-config entrypoint used by `medical_rag_reranker.commands`."""
+    return run_retrieval(
+        retriever_name=str(cfg.retrieval.name),
+        index_path=str(cfg.retrieval_run.index),
+        queries_path=str(cfg.retrieval_run.queries),
+        out_path=str(cfg.retrieval_run.out),
+        top_k=int(cfg.retrieval_run.top_k),
+        run_name=str(cfg.retrieval_run.run_name),
+    )
+
+
 def main():
     """Run a retrieval baseline and write results in TREC run format.
 
     This entrypoint:
     - Loads a retriever from `--index` (bm25/dense index file, or a hybrid manifest/directory).
-    - Reads queries from `--queries` (JSONL with keys: `query_id`, `text`).
+    - Reads queries from `--queries` (JSONL with keys: `query_id`, `text`/`question`).
     - For each query, retrieves `--top_k` documents and writes a run file to `--out`.
 
     Output file format (one line per hit):
@@ -147,27 +241,14 @@ def main():
     p.add_argument("--run_name", default="baseline")
     args = p.parse_args()
 
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    if args.retriever == "bm25":
-        r = BM25Retriever.load(args.index)
-    elif args.retriever == "dense":
-        r = DenseRetriever.load(args.index)
-    else:
-        manifest_path = _resolve_manifest_path(args.index)
-        r = _load_hybrid_from_manifest(manifest_path)
-
-    # TREC format: query_id Q0 doc_id rank score run_name
-    with open(args.queries, "r", encoding="utf-8") as fq, open(out, "w", encoding="utf-8") as fo:
-        for line in fq:
-            q = json.loads(line)
-            qid = str(q["query_id"])
-            text = q["text"]
-
-            hits = r.retrieve(text, top_k=args.top_k)
-            for rank, h in enumerate(hits, start=1):
-                fo.write(f"{qid}\tQ0\t{h.doc_id}\t{rank}\t{h.score:.6f}\t{args.run_name}\n")
+    out = run_retrieval(
+        retriever_name=args.retriever,
+        index_path=args.index,
+        queries_path=args.queries,
+        out_path=args.out,
+        top_k=args.top_k,
+        run_name=args.run_name,
+    )
 
     print(f"Wrote run file: {out}")
 

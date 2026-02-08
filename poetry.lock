@@ -4576,6 +4576,17 @@ strategies = ["deepspeed (>=0.15.0,<0.17.0) ; platform_system != \"Windows\" and
 test = ["cloudpickle (>=1.3)", "coverage (==7.10.7) ; python_version < \"3.10\"", "coverage (==7.11.0) ; python_version >= \"3.10\"", "fastapi", "huggingface-hub", "numpy (>1.20.0)", "onnx (>1.12.0)", "onnxruntime (>=1.12.0)", "onnxscript (>=0.1.0)", "pandas (>2.0)", "psutil (<7.2.0)", "pytest (==8.4.2)", "pytest-cov (==7.0.0)", "pytest-random-order (==1.2.0)", "pytest-rerunfailures (==16.0.1) ; python_version < \"3.10\"", "pytest-rerunfailures (==16.1) ; python_version >= \"3.10\"", "pytest-timeout (==2.4.0)", "scikit-learn (>0.22.1)", "tensorboard (>=2.11)", "torch-tensorrt ; platform_system == \"Linux\" and python_version >= \"3.12\"", "uvicorn"]
 
 [[package]]
+name = "pytrec-eval"
+version = "0.5"
+description = "Provides Python bindings for popular Information Retrieval measures implemented within trec_eval."
+optional = false
+python-versions = ">=3"
+groups = ["main"]
+files = [
+    {file = "pytrec_eval-0.5.tar.gz", hash = "sha256:d9eb4616e7d6b73bf1b5ba4c2c4916e88124e790b53fd61610c30158999e7bde"},
+]
+
+[[package]]
 name = "pytz"
 version = "2025.2"
 description = "World timezone definitions, modern and historical"
@@ -4700,6 +4711,24 @@ files = [
     {file = "pyyaml-6.0.3-cp39-cp39-win_amd64.whl", hash = "sha256:2e71d11abed7344e42a8849600193d15b6def118602c4c176f748e4583246007"},
     {file = "pyyaml-6.0.3.tar.gz", hash = "sha256:d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f"},
 ]
+
+[[package]]
+name = "rank-bm25"
+version = "0.2.2"
+description = "Various BM25 algorithms for document ranking"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "rank_bm25-0.2.2-py3-none-any.whl", hash = "sha256:7bd4a95571adadfc271746fa146a4bcfd89c0cf731e49c3d1ad863290adbe8ae"},
+    {file = "rank_bm25-0.2.2.tar.gz", hash = "sha256:096ccef76f8188563419aaf384a02f0ea459503fdf77901378d4fd9d87e5e51d"},
+]
+
+[package.dependencies]
+numpy = "*"
+
+[package.extras]
+dev = ["pytest"]
 
 [[package]]
 name = "regex"
@@ -6332,4 +6361,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.15"
-content-hash = "a5fdcab8c1d450846697ed5d7b42d375b90bd3cc08044cb2294a5586df084563"
+content-hash = "c6030fba9eac5c239051784aefd89047519f7728ff5769023f2b1feb229c2ba9"

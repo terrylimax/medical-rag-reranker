@@ -1,0 +1,28 @@
+enabled: true
+
+# single | batch
+mode: single
+
+# Used when question is not passed directly.
+queries_path: ${paths.data_dir}/processed/eval_queries.jsonl
+
+# Corpus JSONL with doc_id/text/source fields.
+corpus_path: ${paths.data_dir}/processed/corpus.jsonl
+
+# Index file or hybrid manifest path.
+index: ${paths.artifacts_dir}/${retrieval.index_file}
+
+top_k: 5
+seed: 42
+
+# Local transformers generation backend.
+llm_model_name: google/flan-t5-small
+max_input_tokens: 1024
+max_new_tokens: 192
+temperature: 0.0
+do_sample: false
+
+# Batch reporting.
+report_path: reports/baseline_examples.md
+examples_limit: 20
+results_jsonl_path: null

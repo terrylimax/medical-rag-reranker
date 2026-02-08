@@ -76,8 +76,9 @@ import json
 import os
 from pathlib import Path
 
+from omegaconf import DictConfig
+
 from medical_rag_reranker.retrieval.bm25 import BM25Retriever
-from medical_rag_reranker.retrieval.dense import DenseRetriever
 
 
 def _default_index_filename(retriever: str) -> str:
@@ -109,7 +110,9 @@ def _resolve_out_path(retriever: str, out_arg: str) -> Path:
 
     default_name = _default_index_filename(retriever)
     # default_name has either one suffix (.pkl) or two (.json.gz)
-    return out.with_suffix("").with_name(out.name + "".join(Path(default_name).suffixes))
+    return out.with_suffix("").with_name(
+        out.name + "".join(Path(default_name).suffixes)
+    )
 
 
 def _relpath(path: Path, start: Path) -> str:
@@ -149,6 +152,91 @@ def _resolve_hybrid_out_paths(out_arg: str) -> tuple[Path, Path, Path]:
     return manifest, bm25_path, dense_path
 
 
+def run_index(
+    retriever: str,
+    corpus: str,
+    out: str,
+    model: str = "sentence-transformers/all-MiniLM-L6-v2",
+    alpha: float = 0.5,
+    cand_k: int = 50,
+) -> Path | tuple[Path, Path, Path]:
+    """Build index(es) for a retriever and persist them to disk."""
+    if retriever == "hybrid":
+        try:
+            from medical_rag_reranker.retrieval.dense import DenseRetriever
+        except Exception as e:
+            raise RuntimeError(
+                "Dense/hybrid index requires `sentence-transformers`. "
+                "Install dependencies or switch to retrieval=bm25."
+            ) from e
+
+        manifest_path, bm25_path, dense_path = _resolve_hybrid_out_paths(out)
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        bm25_path.parent.mkdir(parents=True, exist_ok=True)
+        dense_path.parent.mkdir(parents=True, exist_ok=True)
+
+        bm25 = BM25Retriever()
+        dense = DenseRetriever(model_name=model)
+
+        bm25.index(corpus)
+        bm25.save(str(bm25_path))
+
+        dense.index(corpus)
+        dense.save(str(dense_path))
+
+        manifest = {
+            "format": "medical-rag-reranker.hybrid-index",
+            "version": 1,
+            "retriever": "hybrid",
+            "alpha": float(alpha),
+            "cand_k": int(cand_k),
+            "corpus": str(corpus),
+            "dense_model": str(model),
+            "bm25_index": _relpath(bm25_path, manifest_path.parent),
+            "dense_index": _relpath(dense_path, manifest_path.parent),
+        }
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+        print(f"Saved hybrid manifest to: {manifest_path}")
+        print(f"Saved bm25 index to: {bm25_path}")
+        print(f"Saved dense index to: {dense_path}")
+        return manifest_path, bm25_path, dense_path
+
+    resolved_out = _resolve_out_path(retriever, out)
+    resolved_out.parent.mkdir(parents=True, exist_ok=True)
+
+    if retriever == "bm25":
+        retriever_impl = BM25Retriever()
+    else:
+        try:
+            from medical_rag_reranker.retrieval.dense import DenseRetriever
+        except Exception as e:
+            raise RuntimeError(
+                "Dense index requires `sentence-transformers`. "
+                "Install dependencies or switch to retrieval=bm25."
+            ) from e
+        retriever_impl = DenseRetriever(model_name=model)
+
+    retriever_impl.index(corpus)
+    retriever_impl.save(str(resolved_out))
+    print(f"Saved index to: {resolved_out}")
+    return resolved_out
+
+
+def run_from_cfg(cfg: DictConfig) -> Path | tuple[Path, Path, Path]:
+    """Hydra-config entrypoint used by `medical_rag_reranker.commands`."""
+    run_cfg = cfg.run.retrieval_index
+    return run_index(
+        retriever=str(cfg.retrieval.name),
+        corpus=str(run_cfg.corpus),
+        out=str(run_cfg.out),
+        model=str(run_cfg.model),
+        alpha=float(run_cfg.alpha),
+        cand_k=int(run_cfg.cand_k),
+    )
+
+
 def main():
     p = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -171,57 +259,23 @@ def main():
             "For hybrid, this will write a manifest JSON plus separate bm25/dense index files."
         ),
     )
-    p.add_argument("--model", default="sentence-transformers/all-MiniLM-L6-v2",
-                   help="only for dense")
+    p.add_argument(
+        "--model",
+        default="sentence-transformers/all-MiniLM-L6-v2",
+        help="only for dense",
+    )
     p.add_argument("--alpha", type=float, default=0.5, help="only for hybrid")
     p.add_argument("--cand-k", type=int, default=50, help="only for hybrid")
     args = p.parse_args()
 
-    if args.retriever == "hybrid":
-        manifest_path, bm25_path, dense_path = _resolve_hybrid_out_paths(args.out)
-        manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        bm25_path.parent.mkdir(parents=True, exist_ok=True)
-        dense_path.parent.mkdir(parents=True, exist_ok=True)
-
-        bm25 = BM25Retriever()
-        dense = DenseRetriever(model_name=args.model)
-
-        bm25.index(args.corpus)
-        bm25.save(str(bm25_path))
-
-        dense.index(args.corpus)
-        dense.save(str(dense_path))
-
-        manifest = {
-            "format": "medical-rag-reranker.hybrid-index",
-            "version": 1,
-            "retriever": "hybrid",
-            "alpha": float(args.alpha),
-            "cand_k": int(args.cand_k),
-            "corpus": str(args.corpus),
-            "dense_model": str(args.model),
-            "bm25_index": _relpath(bm25_path, manifest_path.parent),
-            "dense_index": _relpath(dense_path, manifest_path.parent),
-        }
-        with open(manifest_path, "w", encoding="utf-8") as f:
-            json.dump(manifest, f, ensure_ascii=False, indent=2)
-
-        print(f"Saved hybrid manifest to: {manifest_path}")
-        print(f"Saved bm25 index to: {bm25_path}")
-        print(f"Saved dense index to: {dense_path}")
-        return
-
-    out = _resolve_out_path(args.retriever, args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    if args.retriever == "bm25":
-        r = BM25Retriever()
-    else:
-        r = DenseRetriever(model_name=args.model)
-
-    r.index(args.corpus)
-    r.save(str(out))
-    print(f"Saved index to: {out}")
+    run_index(
+        retriever=args.retriever,
+        corpus=args.corpus,
+        out=args.out,
+        model=args.model,
+        alpha=args.alpha,
+        cand_k=args.cand_k,
+    )
 
 
 if __name__ == "__main__":

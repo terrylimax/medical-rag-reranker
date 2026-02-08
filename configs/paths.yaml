@@ -1,0 +1,3 @@
+data_dir: data
+artifacts_dir: artifacts
+runs_dir: runs

@@ -1,0 +1,4 @@
+raw_nih_path: ${data.raw_dir}/medquad/train.parquet
+out_dir: ${paths.data_dir}/processed
+eval_size: 300
+seed: 42

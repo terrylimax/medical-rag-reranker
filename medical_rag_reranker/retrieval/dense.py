@@ -7,8 +7,10 @@ from sentence_transformers import SentenceTransformer
 
 from . import Retriever, ScoredDoc
 
+
 def l2_normalize(x: np.ndarray) -> np.ndarray:
     return x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-12)
+
 
 @dataclass
 class DenseRetriever(Retriever):
@@ -37,7 +39,7 @@ class DenseRetriever(Retriever):
         q = self.model.encode([query])
         q = np.asarray(q, dtype=np.float32)
         q = q / (np.linalg.norm(q, axis=1, keepdims=True) + 1e-12)
-        scores = (self.emb @ q.T).squeeze(1)  #(N, 1) --> (N,)
+        scores = (self.emb @ q.T).squeeze(1)  # (N, 1) --> (N,)
         idx = np.argpartition(scores, -top_k)[-top_k:]
         idx = idx[np.argsort(scores[idx])[::-1]]
         return [ScoredDoc(self.doc_ids[i], float(scores[i])) for i in idx]
@@ -45,7 +47,11 @@ class DenseRetriever(Retriever):
     def save(self, path: str) -> None:
         with open(path, "wb") as f:
             pickle.dump(
-                {"model_name": self.model_name, "doc_ids": self.doc_ids, "emb": self.emb},
+                {
+                    "model_name": self.model_name,
+                    "doc_ids": self.doc_ids,
+                    "emb": self.emb,
+                },
                 f,
             )
 

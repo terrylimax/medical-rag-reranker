@@ -1,0 +1,20 @@
+eval_queries: ${run.prep_data.out_dir}/eval_queries.jsonl
+qrels: ${run.prep_data.out_dir}/qrels.tsv
+
+# Option A: evaluate existing run file
+run_path: null
+
+# Option B: call external retriever command template with {queries} and {out_run}
+retrieve_cmd: null
+out_run: ${paths.runs_dir}/${retrieval.name}.trec
+
+ks: "5,10"
+run_name: ${retrieval.name}
+experiment: retrieval_eval
+mlflow_uri: null
+run_tag: null
+
+retriever: ${retrieval.name}
+top_k: ${retrieval_run.top_k}
+alpha: null
+embedding_model: null
