@@ -289,6 +289,143 @@ Notes:
 
 ---
 
+## Async-Ready Job Storage
+
+The project now includes a job abstraction for inference:
+
+- `submit_job` creates a job (`PENDING -> RUNNING -> SUCCEEDED/FAILED`)
+- `job_status` returns current status and timestamps
+- `job_result` returns persisted result payload
+
+Default storage is file-based (`runs/jobs/`), but you can switch to PostgreSQL
+without changing business logic (repositories are selected via config).
+
+### File storage (default)
+
+```bash
+poetry run python -m medical_rag_reranker.commands submit_job \
+  --question "What is metformin used for?"
+```
+
+### PostgreSQL storage
+
+1. Install PostgreSQL driver for SQLAlchemy (once):
+
+```bash
+poetry add "psycopg[binary]"
+```
+
+2. Configure overrides (`jobs.storage=postgres` + DSN):
+
+```bash
+poetry run python -m medical_rag_reranker.commands init_jobs_schema \
+  --overrides "jobs.storage=postgres,jobs.postgres.dsn=postgresql+psycopg://user:password@127.0.0.1:5432/medical_rag"
+```
+
+3. Submit a job using PostgreSQL-backed repositories:
+
+```bash
+poetry run python -m medical_rag_reranker.commands submit_job \
+  --question "What is metformin used for?" \
+  --overrides "jobs.storage=postgres,jobs.postgres.dsn=postgresql+psycopg://user:password@127.0.0.1:5432/medical_rag"
+```
+
+Reference SQL schema: `medical_rag_reranker/jobs/sql/postgres_schema.sql`.
+
+---
+
+## Docker Compose (Reviewer Flow: Run -> Request -> Verify DB)
+
+This is the recommended end-to-end check for reviewers.
+
+1. Prepare env and host folders:
+
+```bash
+cp .env.example .env
+mkdir -p data artifacts runs reports .hf_cache
+```
+
+2. Start services:
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+3. Initialize Postgres schema for jobs:
+
+```bash
+docker compose exec app \
+  python -m medical_rag_reranker.commands init_jobs_schema
+```
+
+4. Send a test inference request (job):
+
+```bash
+docker compose exec app \
+  python -m medical_rag_reranker.commands submit_job \
+  --question "What is metformin used for?"
+```
+
+The command returns JSON with `job_id`, `status`, and (if completed) `result`.
+
+5. Validate via app commands (replace `<job_id>` from previous output):
+
+```bash
+docker compose exec app \
+  python -m medical_rag_reranker.commands job_status --job_id "<job_id>"
+
+docker compose exec app \
+  python -m medical_rag_reranker.commands job_result --job_id "<job_id>"
+```
+
+6. Validate directly in PostgreSQL (defaults from `.env.example`):
+
+```bash
+docker compose exec postgres \
+  psql -U medical_rag -d medical_rag -c "
+  SELECT job_id, status, created_at, started_at, finished_at, error_message
+  FROM inference_jobs
+  ORDER BY created_at DESC
+  LIMIT 10;"
+```
+
+```bash
+docker compose exec postgres \
+  psql -U medical_rag -d medical_rag -c "
+  SELECT job_id, jsonb_pretty(result) AS result
+  FROM inference_results
+  ORDER BY updated_at DESC
+  LIMIT 10;"
+```
+
+Optional joined view:
+
+```bash
+docker compose exec postgres \
+  psql -U medical_rag -d medical_rag -c "
+  SELECT
+    j.job_id,
+    j.status,
+    j.created_at,
+    j.finished_at,
+    LEFT(COALESCE(r.result->>'answer',''), 140) AS answer_preview
+  FROM inference_jobs j
+  LEFT JOIN inference_results r ON r.job_id = j.job_id
+  ORDER BY j.created_at DESC
+  LIMIT 10;"
+```
+
+7. Stop services:
+
+```bash
+docker compose down
+```
+
+Use `docker compose down -v` if you also want to remove Postgres data volume.
+
+---
+
 ## Offline Retrieval Evaluation
 
 This project includes a small CLI to evaluate retrieval runs against qrels using `pytrec_eval`.

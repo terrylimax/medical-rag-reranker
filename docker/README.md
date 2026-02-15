@@ -97,3 +97,21 @@ docker run --rm -it \
 ```bash
 -v "$(pwd)/models:/app/models"
 ```
+
+## Optional: run with PostgreSQL using docker compose
+
+From repository root:
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+docker compose exec app python -m medical_rag_reranker.commands init_jobs_schema
+```
+
+Submit a job and inspect it:
+
+```bash
+docker compose exec app python -m medical_rag_reranker.commands submit_job --question "What is metformin used for?"
+docker compose exec app python -m medical_rag_reranker.commands job_status --job_id "<job_id>"
+docker compose exec app python -m medical_rag_reranker.commands job_result --job_id "<job_id>"
+```
