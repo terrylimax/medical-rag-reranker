@@ -36,6 +36,7 @@ def main() -> None:
     - python -m medical_rag_reranker.commands job_status
     - python -m medical_rag_reranker.commands job_result
     - python -m medical_rag_reranker.commands init_jobs_schema
+    - python -m medical_rag_reranker.commands serve_jobs_api
 
     Examples:
     - python -m medical_rag_reranker.commands download_data
@@ -51,6 +52,7 @@ def main() -> None:
     - python -m medical_rag_reranker.commands job_status --job_id "..."
     - python -m medical_rag_reranker.commands job_result --job_id "..."
     - python -m medical_rag_reranker.commands init_jobs_schema
+    - python -m medical_rag_reranker.commands serve_jobs_api
     """
     fire.Fire(
         {
@@ -67,6 +69,7 @@ def main() -> None:
             "job_status": cmd_job_status,
             "job_result": cmd_job_result,
             "init_jobs_schema": cmd_init_jobs_schema,
+            "serve_jobs_api": cmd_serve_jobs_api,
         }
     )
 
@@ -259,6 +262,19 @@ def cmd_init_jobs_schema(
 
     init_jobs_schema(cfg)
     print("Jobs schema initialized.")
+
+
+def cmd_serve_jobs_api(
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    config_dir: Optional[str] = None,
+    overrides: Optional[str] = None,
+) -> None:
+    """Run HTTP producer API for submit/status/result job flow."""
+    cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
+    from medical_rag_reranker.jobs.http_api import serve_jobs_api
+
+    serve_jobs_api(cfg=cfg, host=host, port=port)
 
 
 def cmd_prep_data(

@@ -98,20 +98,68 @@ docker run --rm -it \
 -v "$(pwd)/models:/app/models"
 ```
 
-## Optional: run with PostgreSQL using docker compose
+## Optional: run with PostgreSQL + RabbitMQ (producer/consumer) using docker compose
 
 From repository root:
 
 ```bash
 cp .env.example .env
 docker compose up -d --build
+docker compose ps
 docker compose exec app python -m medical_rag_reranker.commands init_jobs_schema
 ```
 
-Submit a job and inspect it:
+`init_jobs_schema` prepares DB tables for jobs storage. It uses `JOBS_POSTGRES_DSN`,
+applies `medical_rag_reranker/jobs/sql/postgres_schema.sql`, and creates
+`inference_jobs` + `inference_results` if they do not exist.
+It is idempotent, and it does not publish tasks to broker or start worker execution.
+
+Quick check:
 
 ```bash
-docker compose exec app python -m medical_rag_reranker.commands submit_job --question "What is metformin used for?"
-docker compose exec app python -m medical_rag_reranker.commands job_status --job_id "<job_id>"
-docker compose exec app python -m medical_rag_reranker.commands job_result --job_id "<job_id>"
+docker compose exec postgres psql -U medical_rag -d medical_rag -c "\dt"
+```
+
+For explicit broker verification, stop worker first:
+
+```bash
+docker compose stop worker
+```
+
+Submit a job to producer API and capture `job_id`:
+
+```bash
+RESP=$(curl -sS -X POST "http://127.0.0.1:${JOBS_API_PORT:-8080}/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is metformin used for?"}')
+echo "$RESP"
+JOB_ID=$(echo "$RESP" | python -c 'import sys,json; print(json.load(sys.stdin)["job_id"])')
+echo "$JOB_ID"
+```
+
+Check RabbitMQ queue state:
+
+```bash
+docker compose exec rabbitmq rabbitmqctl list_queues \
+  name messages_ready messages_unacknowledged consumers
+```
+
+Expected for `inference_jobs`: `messages_ready >= 1`, `consumers = 0`.
+
+Start worker and watch processing:
+
+```bash
+docker compose start worker
+docker compose logs -f worker
+```
+
+Then check status/result and DB row for this job:
+
+```bash
+curl -sS "http://127.0.0.1:${JOBS_API_PORT:-8080}/jobs/$JOB_ID"
+curl -sS "http://127.0.0.1:${JOBS_API_PORT:-8080}/jobs/$JOB_ID/result"
+
+docker compose exec postgres psql -U medical_rag -d medical_rag -c \
+"SELECT job_id,status,created_at,started_at,finished_at,error_message \
+FROM inference_jobs WHERE job_id='$JOB_ID';"
 ```

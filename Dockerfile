@@ -23,7 +23,7 @@ WORKDIR /app
 # Install dependencies first (better layer caching).
 COPY pyproject.toml poetry.lock README.md ./
 RUN poetry install --only main --no-root
-RUN pip install "psycopg[binary]>=3.1,<4.0"
+RUN pip install "psycopg[binary]>=3.1,<4.0" "celery>=5.6,<6.0"
 
 # Copy project sources and install the package itself.
 COPY configs ./configs

@@ -1,4 +1,21 @@
 services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: medical-rag-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
   postgres:
     image: postgres:16-alpine
     container_name: medical-rag-postgres
@@ -29,13 +46,23 @@ services:
     container_name: medical-rag-app
     restart: unless-stopped
     depends_on:
+      rabbitmq:
+        condition: service_healthy
       postgres:
         condition: service_healthy
     environment:
       JOBS_STORAGE: postgres
+      JOBS_DISPATCH: broker
       JOBS_POSTGRES_DSN: postgresql+psycopg://${POSTGRES_USER:-medical_rag}:${POSTGRES_PASSWORD:-medical_rag}@postgres:5432/${POSTGRES_DB:-medical_rag}
       JOBS_POSTGRES_INIT_SCHEMA: "false"
       JOBS_AUTO_DISPATCH: "true"
+      JOBS_BROKER_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672//
+      JOBS_BROKER_QUEUE: inference_jobs
+      JOBS_BROKER_TASK_NAME: medical_rag_reranker.jobs.tasks.process_inference_job
+      JOBS_API_HOST: 0.0.0.0
+      JOBS_API_PORT: ${JOBS_API_PORT:-8080}
+    ports:
+      - "${JOBS_API_PORT:-8080}:${JOBS_API_PORT:-8080}"
     volumes:
       - ./data:/app/data
       - ./artifacts:/app/artifacts
@@ -43,12 +70,53 @@ services:
       - ./reports:/app/reports
       - ./.hf_cache:/app/.cache/huggingface
     healthcheck:
-      test: ["CMD-SHELL", 'python -c "import medical_rag_reranker"']
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://127.0.0.1:${JOBS_API_PORT:-8080}/health >/dev/null",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    command:
+      [
+        "sh",
+        "-c",
+        "python -m medical_rag_reranker.commands serve_jobs_api --host=${JOBS_API_HOST:-0.0.0.0} --port=${JOBS_API_PORT:-8080}",
+      ]
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: medical-rag-worker
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      JOBS_STORAGE: postgres
+      JOBS_DISPATCH: broker
+      JOBS_POSTGRES_DSN: postgresql+psycopg://${POSTGRES_USER:-medical_rag}:${POSTGRES_PASSWORD:-medical_rag}@postgres:5432/${POSTGRES_DB:-medical_rag}
+      JOBS_POSTGRES_INIT_SCHEMA: "false"
+      JOBS_BROKER_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672//
+      JOBS_BROKER_QUEUE: inference_jobs
+      JOBS_BROKER_TASK_NAME: medical_rag_reranker.jobs.tasks.process_inference_job
+    volumes:
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
+      - ./runs:/app/runs
+      - ./reports:/app/reports
+      - ./.hf_cache:/app/.cache/huggingface
+    command:
+      [
+        "sh",
+        "-c",
+        "celery -A medical_rag_reranker.jobs.tasks:celery_app worker --loglevel=info --queues=${JOBS_BROKER_QUEUE:-inference_jobs}",
+      ]
 
 volumes:
   postgres_data:

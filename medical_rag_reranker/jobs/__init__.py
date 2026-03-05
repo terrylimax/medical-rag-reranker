@@ -1,5 +1,6 @@
 from medical_rag_reranker.jobs.bootstrap import (
     JobRuntime,
+    build_job_service,
     build_job_runtime,
     init_jobs_schema,
 )
@@ -11,6 +12,7 @@ __all__ = [
     "InferenceJobService",
     "JobRuntime",
     "JobStatus",
+    "build_job_service",
     "build_job_runtime",
     "init_jobs_schema",
 ]

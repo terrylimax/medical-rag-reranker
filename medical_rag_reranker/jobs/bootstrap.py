@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from omegaconf import DictConfig
 
-from medical_rag_reranker.jobs.dispatchers import SyncDispatcher
+from medical_rag_reranker.jobs.dispatchers import BrokerDispatcher, SyncDispatcher
 from medical_rag_reranker.jobs.ports import TaskDispatcher
 from medical_rag_reranker.jobs.repositories.file import (
     FileJobRepository,
@@ -75,21 +75,31 @@ def _build_repositories(cfg: DictConfig):
     raise ValueError(f"Unsupported jobs.storage: {storage}. Use file or postgres.")
 
 
-def build_job_runtime(cfg: DictConfig) -> JobRuntime:
+def build_job_service(cfg: DictConfig) -> InferenceJobService:
     job_repository, result_repository = _build_repositories(cfg)
 
-    service = InferenceJobService(
+    return InferenceJobService(
         cfg=cfg,
         job_repository=job_repository,
         result_repository=result_repository,
     )
 
+
+def build_job_runtime(cfg: DictConfig) -> JobRuntime:
+    service = build_job_service(cfg)
+
     dispatch_mode = str(getattr(cfg.jobs, "dispatch", "sync")).strip().lower()
     if dispatch_mode == "sync":
         dispatcher: TaskDispatcher = SyncDispatcher(processor=service)
     elif dispatch_mode == "broker":
-        raise NotImplementedError(
-            "dispatch=broker is reserved for a future message-broker adapter."
+        from medical_rag_reranker.jobs.celery_app import build_celery_app_from_cfg
+
+        celery_app, broker_cfg = build_celery_app_from_cfg(cfg)
+        dispatcher = BrokerDispatcher(
+            celery_app=celery_app,
+            task_name=broker_cfg.task_name,
+            queue=broker_cfg.queue,
+            routing_key=broker_cfg.routing_key,
         )
     else:
         raise ValueError(

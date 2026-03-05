@@ -18,3 +18,15 @@ postgres:
   dsn: ${oc.env:JOBS_POSTGRES_DSN,null}
   # If true, create tables automatically on runtime bootstrap.
   init_schema: ${oc.decode:${oc.env:JOBS_POSTGRES_INIT_SCHEMA,false}}
+
+broker:
+  # Example:
+  # url: amqp://guest:guest@rabbitmq:5672//
+  url: ${oc.env:JOBS_BROKER_URL,null}
+  queue: ${oc.env:JOBS_BROKER_QUEUE,inference_jobs}
+  task_name: ${oc.env:JOBS_BROKER_TASK_NAME,medical_rag_reranker.jobs.tasks.process_inference_job}
+  routing_key: ${oc.env:JOBS_BROKER_ROUTING_KEY,null}
+
+api:
+  host: ${oc.env:JOBS_API_HOST,0.0.0.0}
+  port: ${oc.decode:${oc.env:JOBS_API_PORT,8080}}

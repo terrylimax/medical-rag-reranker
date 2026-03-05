@@ -359,64 +359,81 @@ docker compose exec app \
   python -m medical_rag_reranker.commands init_jobs_schema
 ```
 
-4. Send a test inference request (job):
+What this command does:
+
+- connects to PostgreSQL via `JOBS_POSTGRES_DSN`
+- applies `medical_rag_reranker/jobs/sql/postgres_schema.sql`
+- creates `inference_jobs` and `inference_results` if missing
+- is idempotent (safe to run multiple times)
+
+Important: `init_jobs_schema` does not publish anything to broker and does not start worker execution.
+
+Quick DB check:
 
 ```bash
-docker compose exec app \
-  python -m medical_rag_reranker.commands submit_job \
-  --question "What is metformin used for?"
+docker compose exec postgres psql -U medical_rag -d medical_rag -c "\dt"
 ```
 
-The command returns JSON with `job_id`, `status`, and (if completed) `result`.
-
-5. Validate via app commands (replace `<job_id>` from previous output):
+4. Stop consumer for an explicit broker check:
 
 ```bash
-docker compose exec app \
-  python -m medical_rag_reranker.commands job_status --job_id "<job_id>"
-
-docker compose exec app \
-  python -m medical_rag_reranker.commands job_result --job_id "<job_id>"
+docker compose stop worker
 ```
 
-6. Validate directly in PostgreSQL (defaults from `.env.example`):
+5. Send a test request to producer API and capture `job_id`:
 
 ```bash
-docker compose exec postgres \
-  psql -U medical_rag -d medical_rag -c "
-  SELECT job_id, status, created_at, started_at, finished_at, error_message
-  FROM inference_jobs
-  ORDER BY created_at DESC
-  LIMIT 10;"
+RESP=$(curl -sS -X POST "http://127.0.0.1:${JOBS_API_PORT:-8080}/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is metformin used for?"}')
+echo "$RESP"
+JOB_ID=$(echo "$RESP" | python -c 'import sys,json; print(json.load(sys.stdin)["job_id"])')
+echo "$JOB_ID"
+```
+
+6. Verify that message is waiting in RabbitMQ queue:
+
+```bash
+docker compose exec rabbitmq rabbitmqctl list_queues \
+  name messages_ready messages_unacknowledged consumers
+```
+
+Expected for `inference_jobs`: `messages_ready >= 1` and `consumers = 0`.
+
+7. Start consumer and watch processing:
+
+```bash
+docker compose start worker
+docker compose logs -f worker
+```
+
+Expected worker logs: `Task ... received` and then `succeeded` (or `failed`).
+
+8. Check status and result by `job_id`:
+
+```bash
+curl -sS "http://127.0.0.1:${JOBS_API_PORT:-8080}/jobs/$JOB_ID"
+curl -sS "http://127.0.0.1:${JOBS_API_PORT:-8080}/jobs/$JOB_ID/result"
+```
+
+Expected: status eventually becomes `SUCCEEDED` and `/result` returns payload.
+
+9. Verify persisted data in PostgreSQL:
+
+```bash
+docker compose exec postgres psql -U medical_rag -d medical_rag -c \
+"SELECT job_id,status,created_at,started_at,finished_at,error_message \
+FROM inference_jobs WHERE job_id='$JOB_ID';"
 ```
 
 ```bash
-docker compose exec postgres \
-  psql -U medical_rag -d medical_rag -c "
-  SELECT job_id, jsonb_pretty(result) AS result
-  FROM inference_results
-  ORDER BY updated_at DESC
-  LIMIT 10;"
+docker compose exec postgres psql -U medical_rag -d medical_rag -c \
+"SELECT job_id, jsonb_pretty(result) FROM inference_results WHERE job_id='$JOB_ID';"
 ```
 
-Optional joined view:
+If you keep worker running during submission, queue may be drained immediately and step 6 will be less visible.
 
-```bash
-docker compose exec postgres \
-  psql -U medical_rag -d medical_rag -c "
-  SELECT
-    j.job_id,
-    j.status,
-    j.created_at,
-    j.finished_at,
-    LEFT(COALESCE(r.result->>'answer',''), 140) AS answer_preview
-  FROM inference_jobs j
-  LEFT JOIN inference_results r ON r.job_id = j.job_id
-  ORDER BY j.created_at DESC
-  LIMIT 10;"
-```
-
-7. Stop services:
+10. Stop services:
 
 ```bash
 docker compose down
