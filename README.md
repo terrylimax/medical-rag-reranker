@@ -315,10 +315,10 @@ poetry run python -m medical_rag_reranker.commands submit_job \
 poetry add "psycopg[binary]"
 ```
 
-2. Configure overrides (`jobs.storage=postgres` + DSN):
+2. Apply migrations (`jobs.storage=postgres` + DSN):
 
 ```bash
-poetry run python -m medical_rag_reranker.commands init_jobs_schema \
+poetry run python -m medical_rag_reranker.commands migrate_jobs_schema \
   --overrides "jobs.storage=postgres,jobs.postgres.dsn=postgresql+psycopg://user:password@127.0.0.1:5432/medical_rag"
 ```
 
@@ -330,7 +330,7 @@ poetry run python -m medical_rag_reranker.commands submit_job \
   --overrides "jobs.storage=postgres,jobs.postgres.dsn=postgresql+psycopg://user:password@127.0.0.1:5432/medical_rag"
 ```
 
-Reference SQL schema: `medical_rag_reranker/jobs/sql/postgres_schema.sql`.
+The PostgreSQL schema is managed via Alembic migrations in `alembic/versions/`.
 
 ---
 
@@ -352,21 +352,21 @@ docker compose up -d --build
 docker compose ps
 ```
 
-3. Initialize Postgres schema for jobs:
+3. Apply Postgres migrations for jobs:
 
 ```bash
 docker compose exec app \
-  python -m medical_rag_reranker.commands init_jobs_schema
+  python -m medical_rag_reranker.commands migrate_jobs_schema
 ```
 
 What this command does:
 
 - connects to PostgreSQL via `JOBS_POSTGRES_DSN`
-- applies `medical_rag_reranker/jobs/sql/postgres_schema.sql`
-- creates `inference_jobs` and `inference_results` if missing
+- applies Alembic migrations up to `head`
+- creates or upgrades `inference_jobs` and `inference_results` schema as needed
 - is idempotent (safe to run multiple times)
 
-Important: `init_jobs_schema` does not publish anything to broker and does not start worker execution.
+Important: `migrate_jobs_schema` does not publish anything to broker and does not start worker execution.
 
 Quick DB check:
 

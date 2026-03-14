@@ -106,13 +106,13 @@ From repository root:
 cp .env.example .env
 docker compose up -d --build
 docker compose ps
-docker compose exec app python -m medical_rag_reranker.commands init_jobs_schema
+docker compose exec app python -m medical_rag_reranker.commands migrate_jobs_schema
 ```
 
-`init_jobs_schema` prepares DB tables for jobs storage. It uses `JOBS_POSTGRES_DSN`,
-applies `medical_rag_reranker/jobs/sql/postgres_schema.sql`, and creates
-`inference_jobs` + `inference_results` if they do not exist.
-It is idempotent, and it does not publish tasks to broker or start worker execution.
+`migrate_jobs_schema` applies Alembic migrations for jobs storage. It uses
+`JOBS_POSTGRES_DSN`, upgrades the database to the latest revision in
+`alembic/versions/`, and is idempotent. It does not publish tasks to broker or
+start worker execution.
 
 Quick check:
 

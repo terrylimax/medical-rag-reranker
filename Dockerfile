@@ -27,6 +27,8 @@ RUN pip install "psycopg[binary]>=3.1,<4.0" "celery>=5.6,<6.0"
 
 # Copy project sources and install the package itself.
 COPY configs ./configs
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
 COPY medical_rag_reranker ./medical_rag_reranker
 COPY .dvc ./.dvc
 COPY .dvcignore ./.dvcignore

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any, Mapping
 from uuid import uuid4
 
@@ -10,8 +9,6 @@ from sqlalchemy.exc import NoSuchModuleError
 
 from medical_rag_reranker.jobs.models import InferenceJob, JobStatus, utc_now_iso
 from medical_rag_reranker.jobs.ports import JobRepository, ResultRepository
-
-SCHEMA_SQL_PATH = Path(__file__).resolve().parent.parent / "sql" / "postgres_schema.sql"
 
 
 def build_postgres_engine(dsn: str) -> Engine:
@@ -29,18 +26,6 @@ def build_postgres_engine(dsn: str) -> Engine:
         ) from exc
 
 
-def ensure_postgres_schema(engine: Engine) -> None:
-    if not SCHEMA_SQL_PATH.exists():
-        raise FileNotFoundError(f"Postgres schema file not found: {SCHEMA_SQL_PATH}")
-
-    sql_text = SCHEMA_SQL_PATH.read_text(encoding="utf-8")
-    statements = [stmt.strip() for stmt in sql_text.split(";") if stmt.strip()]
-
-    with engine.begin() as conn:
-        for stmt in statements:
-            conn.execute(text(stmt))
-
-
 def _normalize_json_field(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
@@ -56,10 +41,8 @@ def _normalize_json_field(value: Any) -> dict[str, Any]:
 class PostgresJobRepository(JobRepository):
     """PostgreSQL-backed storage for inference jobs."""
 
-    def __init__(self, *, engine: Engine, init_schema: bool = False) -> None:
+    def __init__(self, *, engine: Engine) -> None:
         self._engine = engine
-        if init_schema:
-            ensure_postgres_schema(self._engine)
 
     def create(
         self, *, question: str, metadata: dict[str, Any] | None = None
@@ -188,10 +171,8 @@ class PostgresJobRepository(JobRepository):
 class PostgresResultRepository(ResultRepository):
     """PostgreSQL-backed storage for inference results."""
 
-    def __init__(self, *, engine: Engine, init_schema: bool = False) -> None:
+    def __init__(self, *, engine: Engine) -> None:
         self._engine = engine
-        if init_schema:
-            ensure_postgres_schema(self._engine)
 
     def save(self, job_id: str, result: Mapping[str, Any]) -> None:
         now = utc_now_iso()

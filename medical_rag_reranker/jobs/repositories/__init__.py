@@ -6,7 +6,6 @@ from medical_rag_reranker.jobs.repositories.postgres import (
     PostgresJobRepository,
     PostgresResultRepository,
     build_postgres_engine,
-    ensure_postgres_schema,
 )
 
 __all__ = [
@@ -15,5 +14,4 @@ __all__ = [
     "PostgresJobRepository",
     "PostgresResultRepository",
     "build_postgres_engine",
-    "ensure_postgres_schema",
 ]

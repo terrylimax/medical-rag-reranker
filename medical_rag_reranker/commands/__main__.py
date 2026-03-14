@@ -35,7 +35,7 @@ def main() -> None:
     - python -m medical_rag_reranker.commands submit_job
     - python -m medical_rag_reranker.commands job_status
     - python -m medical_rag_reranker.commands job_result
-    - python -m medical_rag_reranker.commands init_jobs_schema
+    - python -m medical_rag_reranker.commands migrate_jobs_schema
     - python -m medical_rag_reranker.commands serve_jobs_api
 
     Examples:
@@ -51,7 +51,7 @@ def main() -> None:
     - python -m medical_rag_reranker.commands submit_job --question "..."
     - python -m medical_rag_reranker.commands job_status --job_id "..."
     - python -m medical_rag_reranker.commands job_result --job_id "..."
-    - python -m medical_rag_reranker.commands init_jobs_schema
+    - python -m medical_rag_reranker.commands migrate_jobs_schema
     - python -m medical_rag_reranker.commands serve_jobs_api
     """
     fire.Fire(
@@ -68,7 +68,7 @@ def main() -> None:
             "submit_job": cmd_submit_job,
             "job_status": cmd_job_status,
             "job_result": cmd_job_result,
-            "init_jobs_schema": cmd_init_jobs_schema,
+            "migrate_jobs_schema": cmd_migrate_jobs_schema,
             "serve_jobs_api": cmd_serve_jobs_api,
         }
     )
@@ -252,16 +252,16 @@ def cmd_job_result(
     return result
 
 
-def cmd_init_jobs_schema(
+def cmd_migrate_jobs_schema(
     config_dir: Optional[str] = None,
     overrides: Optional[str] = None,
 ) -> None:
-    """Initialize Postgres tables for job storage."""
+    """Apply Alembic migrations for Postgres job storage."""
     cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
-    from medical_rag_reranker.jobs.bootstrap import init_jobs_schema
+    from medical_rag_reranker.jobs.bootstrap import migrate_jobs_schema
 
-    init_jobs_schema(cfg)
-    print("Jobs schema initialized.")
+    migrate_jobs_schema(cfg)
+    print("Jobs schema migrated to latest revision.")
 
 
 def cmd_serve_jobs_api(

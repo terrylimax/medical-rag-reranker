@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from omegaconf import DictConfig
 
 from medical_rag_reranker.jobs.dispatchers import BrokerDispatcher, SyncDispatcher
+from medical_rag_reranker.jobs.migrations import upgrade_jobs_schema
 from medical_rag_reranker.jobs.ports import TaskDispatcher
 from medical_rag_reranker.jobs.repositories.file import (
     FileJobRepository,
@@ -14,7 +15,6 @@ from medical_rag_reranker.jobs.repositories.postgres import (
     PostgresJobRepository,
     PostgresResultRepository,
     build_postgres_engine,
-    ensure_postgres_schema,
 )
 from medical_rag_reranker.jobs.service import InferenceJobService
 
@@ -66,10 +66,10 @@ def _build_repositories(cfg: DictConfig):
         engine = build_postgres_engine(dsn)
         init_schema = _as_bool(getattr(cfg.jobs.postgres, "init_schema", False))
         if init_schema:
-            ensure_postgres_schema(engine)
+            upgrade_jobs_schema(dsn)
         return (
-            PostgresJobRepository(engine=engine, init_schema=False),
-            PostgresResultRepository(engine=engine, init_schema=False),
+            PostgresJobRepository(engine=engine),
+            PostgresResultRepository(engine=engine),
         )
 
     raise ValueError(f"Unsupported jobs.storage: {storage}. Use file or postgres.")
@@ -109,15 +109,14 @@ def build_job_runtime(cfg: DictConfig) -> JobRuntime:
     return JobRuntime(service=service, dispatcher=dispatcher)
 
 
-def init_jobs_schema(cfg: DictConfig) -> None:
-    """Create required Postgres tables for job storage."""
+def migrate_jobs_schema(cfg: DictConfig) -> None:
+    """Apply Alembic migrations for Postgres-backed job storage."""
     storage = str(getattr(cfg.jobs, "storage", "file")).strip().lower()
     if storage != "postgres":
-        raise ValueError("jobs.storage must be `postgres` to initialize DB schema.")
+        raise ValueError("jobs.storage must be `postgres` to apply DB migrations.")
 
     dsn = _as_optional_str(getattr(cfg.jobs.postgres, "dsn", None))
     if dsn is None:
-        raise ValueError("jobs.postgres.dsn is required to initialize DB schema.")
+        raise ValueError("jobs.postgres.dsn is required to apply DB migrations.")
 
-    engine = build_postgres_engine(dsn)
-    ensure_postgres_schema(engine)
+    upgrade_jobs_schema(dsn)
