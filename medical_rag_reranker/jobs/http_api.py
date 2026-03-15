@@ -52,6 +52,7 @@ def create_jobs_api(cfg: DictConfig) -> FastAPI:
     app = FastAPI(
         title="Medical RAG Jobs API",
         version="1.0.0",
+        debug=False,
     )
     app.state.context = context
 

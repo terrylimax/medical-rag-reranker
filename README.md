@@ -334,7 +334,7 @@ The PostgreSQL schema is managed via Alembic migrations in `alembic/versions/`.
 
 ---
 
-## Docker Compose (Reviewer Flow: Run -> Request -> Verify DB)
+## Docker Compose (Nginx + App + Static + Broker)
 
 This is the recommended end-to-end check for reviewers.
 
@@ -350,6 +350,37 @@ mkdir -p data artifacts runs reports .hf_cache
 ```bash
 docker compose up -d --build
 docker compose ps
+```
+
+Expected services:
+
+- `nginx` public gateway (the only published web port)
+- `app` internal FastAPI ASGI application
+- `static` internal static site
+- `worker` Celery consumer
+- `rabbitmq` broker
+- `postgres` storage
+
+Reviewer shortcut for the nginx task:
+
+```bash
+docker compose up -d --build
+curl -sS "http://127.0.0.1:${NGINX_PORT:-8080}/" | head
+curl -sS "http://127.0.0.1:${NGINX_PORT:-8080}/api/health"
+docker compose exec app python -m medical_rag_reranker.commands migrate_jobs_schema
+curl -sS -X POST "http://127.0.0.1:${NGINX_PORT:-8080}/api/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is metformin used for?"}'
+docker compose exec rabbitmq rabbitmqctl list_queues \
+  name messages_ready messages_unacknowledged consumers
+docker compose exec postgres psql -U medical_rag -d medical_rag -c "\dt"
+```
+
+Quick web checks:
+
+```bash
+curl -sS "http://127.0.0.1:${NGINX_PORT:-8080}/" | head
+curl -sS "http://127.0.0.1:${NGINX_PORT:-8080}/api/health"
 ```
 
 3. Apply Postgres migrations for jobs:
@@ -383,7 +414,7 @@ docker compose stop worker
 5. Send a test request to producer API and capture `job_id`:
 
 ```bash
-RESP=$(curl -sS -X POST "http://127.0.0.1:${JOBS_API_PORT:-8080}/jobs" \
+RESP=$(curl -sS -X POST "http://127.0.0.1:${NGINX_PORT:-8080}/api/jobs" \
   -H "Content-Type: application/json" \
   -d '{"question":"What is metformin used for?"}')
 echo "$RESP"
@@ -412,8 +443,8 @@ Expected worker logs: `Task ... received` and then `succeeded` (or `failed`).
 8. Check status and result by `job_id`:
 
 ```bash
-curl -sS "http://127.0.0.1:${JOBS_API_PORT:-8080}/jobs/$JOB_ID"
-curl -sS "http://127.0.0.1:${JOBS_API_PORT:-8080}/jobs/$JOB_ID/result"
+curl -sS "http://127.0.0.1:${NGINX_PORT:-8080}/api/jobs/$JOB_ID"
+curl -sS "http://127.0.0.1:${NGINX_PORT:-8080}/api/jobs/$JOB_ID/result"
 ```
 
 Expected: status eventually becomes `SUCCEEDED` and `/result` returns payload.
@@ -440,6 +471,104 @@ docker compose down
 ```
 
 Use `docker compose down -v` if you also want to remove Postgres data volume.
+
+---
+
+## Docker Image (Single-Container CLI)
+
+If you want to validate the baseline pipeline without `docker compose`, you can
+run the project as a single Docker image and execute CLI commands inside it.
+
+1. Build image:
+
+```bash
+docker build -t medical-rag-reranker:latest .
+```
+
+2. Prepare host folders for mounted outputs:
+
+```bash
+mkdir -p data artifacts runs reports .hf_cache
+```
+
+3. Prepare processed files:
+
+```bash
+docker run --rm -it \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/artifacts:/app/artifacts" \
+  -v "$(pwd)/runs:/app/runs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.hf_cache:/app/.cache/huggingface" \
+  medical-rag-reranker:latest \
+  python -m medical_rag_reranker.commands prep_data --overrides 'data.use_dvc=false'
+```
+
+4. Build BM25 index:
+
+```bash
+docker run --rm -it \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/artifacts:/app/artifacts" \
+  -v "$(pwd)/runs:/app/runs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.hf_cache:/app/.cache/huggingface" \
+  medical-rag-reranker:latest \
+  python -m medical_rag_reranker.commands index --overrides 'data.use_dvc=false,retrieval=bm25'
+```
+
+5. Generate an answer:
+
+```bash
+docker run --rm -it \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/artifacts:/app/artifacts" \
+  -v "$(pwd)/runs:/app/runs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.hf_cache:/app/.cache/huggingface" \
+  medical-rag-reranker:latest \
+  python -m medical_rag_reranker.commands generate \
+  --question "What is metformin used for?" \
+  --overrides 'data.use_dvc=false,retrieval=bm25'
+```
+
+6. Optional retrieval evaluation:
+
+```bash
+docker run --rm -it \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/artifacts:/app/artifacts" \
+  -v "$(pwd)/runs:/app/runs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.hf_cache:/app/.cache/huggingface" \
+  medical-rag-reranker:latest \
+  python -m medical_rag_reranker.commands retrieval_run --overrides 'data.use_dvc=false,retrieval=bm25'
+
+docker run --rm -it \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/artifacts:/app/artifacts" \
+  -v "$(pwd)/runs:/app/runs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.hf_cache:/app/.cache/huggingface" \
+  medical-rag-reranker:latest \
+  python -m medical_rag_reranker.commands eval_retrieval --overrides 'data.use_dvc=false,retrieval=bm25'
+```
+
+Notes:
+
+- The first `generate` call downloads `google/flan-t5-small` into `.hf_cache`,
+  so it may take some time.
+- If network access is limited, point generation to a local model:
+
+```bash
+--overrides 'data.use_dvc=false,retrieval=bm25,generation.llm_model_name=/app/models/your_local_model'
+```
+
+Mount the model directory as well:
+
+```bash
+-v "$(pwd)/models:/app/models"
+```
 
 ---
 
