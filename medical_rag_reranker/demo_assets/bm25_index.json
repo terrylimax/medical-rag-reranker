@@ -1,0 +1,7 @@
+{
+  "format": "bm25-retriever",
+  "version": 2,
+  "corpus_path": "/app/medical_rag_reranker/demo_assets/corpus.jsonl",
+  "tokenizer": "simple_tokenize",
+  "doc_count": 5
+}

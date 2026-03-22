@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: medical-rag
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: worker
+          image: medical-rag-app:local
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - celery -A medical_rag_reranker.jobs.tasks:celery_app worker --loglevel=info --queues=${JOBS_BROKER_QUEUE:-inference_jobs}
+          envFrom:
+            - configMapRef:
+                name: medical-rag-config
+            - secretRef:
+                name: medical-rag-secrets

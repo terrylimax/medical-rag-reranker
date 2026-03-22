@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: medical-rag-config
+  namespace: medical-rag
+data:
+  POSTGRES_DB: medical_rag
+  POSTGRES_USER: medical_rag
+  RABBITMQ_USER: guest
+  JOBS_STORAGE: postgres
+  JOBS_DISPATCH: broker
+  JOBS_AUTO_DISPATCH: "true"
+  JOBS_POSTGRES_INIT_SCHEMA: "false"
+  JOBS_BROKER_QUEUE: inference_jobs
+  JOBS_BROKER_TASK_NAME: medical_rag_reranker.jobs.tasks.process_inference_job
+  JOBS_API_PORT: "8000"
+  JOBS_API_WORKERS: "2"
+  GENERATION_CORPUS_PATH: /app/medical_rag_reranker/demo_assets/corpus.jsonl
+  GENERATION_INDEX_PATH: /app/medical_rag_reranker/demo_assets/bm25_index.json

@@ -56,6 +56,49 @@ The project is set up so a reviewer can validate it end-to-end with the steps be
 
 Expected result: the training run finishes successfully and `train/loss` decreases over time.
 
+## Reviewer Shortcut: Kubernetes Iteration
+
+If you are validating the Kubernetes assignment, the fastest path is:
+
+```bash
+minikube start
+
+minikube image build -t medical-rag-app:local -f Dockerfile .
+minikube image build -t medical-rag-nginx:local -f docker/nginx/Dockerfile .
+minikube image build -t medical-rag-static:local -f docker/static/Dockerfile .
+
+kubectl apply -f k8s/00-namespace.yaml
+kubectl apply -f k8s/
+
+kubectl -n medical-rag rollout status deployment/nginx
+kubectl -n medical-rag rollout status deployment/app
+kubectl -n medical-rag rollout status deployment/worker
+
+kubectl -n medical-rag exec deploy/app -- \
+  python -m medical_rag_reranker.commands migrate_jobs_schema
+```
+
+Terminal 1:
+
+```bash
+# keep this running
+kubectl -n medical-rag port-forward service/nginx 8080:80
+```
+
+Terminal 2:
+
+```bash
+export APP_URL=http://127.0.0.1:8080
+curl -sS "$APP_URL/"
+curl -sS "$APP_URL/api/health"
+```
+
+`APP_URL` will stay available in the current shell session, so you can reuse it
+for the next `curl` commands without retyping the URL.
+
+For the full verification flow with broker queue check, Postgres persistence, and
+pod restart stability, see `Kubernetes (Minikube)` below.
+
 ## Repository Structure
 
 ```text
@@ -471,6 +514,180 @@ docker compose down
 ```
 
 Use `docker compose down -v` if you also want to remove Postgres data volume.
+
+---
+
+## Kubernetes (Minikube)
+
+The repository also includes a minimal Kubernetes deployment for local cluster
+validation in Minikube. This iteration intentionally stays simple: plain
+`Deployment` and `Service` resources, no Ingress/Helm/StatefulSet yet.
+
+Kubernetes manifests are located in `/Users/terrylimax/medical-rag-reranker/k8s/`.
+
+Architecture in cluster:
+
+- `nginx` public NodePort gateway
+- `app` internal FastAPI producer
+- `static` internal static site
+- `worker` Celery consumer
+- `rabbitmq` internal broker
+- `postgres` internal database
+
+The namespace used by manifests is `medical-rag`.
+
+1. Start Minikube:
+
+```bash
+minikube start
+```
+
+2. Build local images directly into Minikube:
+
+```bash
+minikube image build -t medical-rag-app:local -f Dockerfile .
+minikube image build -t medical-rag-nginx:local -f docker/nginx/Dockerfile .
+minikube image build -t medical-rag-static:local -f docker/static/Dockerfile .
+```
+
+3. Apply manifests:
+
+```bash
+kubectl apply -f k8s/00-namespace.yaml
+kubectl apply -f k8s/
+```
+
+4. Wait until core Deployments are ready:
+
+```bash
+kubectl -n medical-rag rollout status deployment/postgres
+kubectl -n medical-rag rollout status deployment/rabbitmq
+kubectl -n medical-rag rollout status deployment/static
+kubectl -n medical-rag rollout status deployment/app
+kubectl -n medical-rag rollout status deployment/worker
+kubectl -n medical-rag rollout status deployment/nginx
+kubectl -n medical-rag get pods
+kubectl -n medical-rag get svc
+```
+
+5. Apply DB migrations for jobs storage:
+
+```bash
+kubectl -n medical-rag exec deploy/app -- \
+  python -m medical_rag_reranker.commands migrate_jobs_schema
+```
+
+Kubernetes smoke-test note:
+
+The Kubernetes manifests are configured to use small bundled demo retrieval
+assets already shipped inside the image:
+
+- `/app/medical_rag_reranker/demo_assets/corpus.jsonl`
+- `/app/medical_rag_reranker/demo_assets/bm25_index.json`
+
+Because of that, `prep_data` and `index` are not required for the basic
+Minikube validation flow after rebuilding the images.
+
+If you still use older images or deliberately switch back to the default
+`data/processed` + `artifacts/` paths and see
+`FileNotFoundError: artifacts/bm25_index.json.gz`, the temporary workaround is:
+
+```bash
+kubectl -n medical-rag exec deploy/worker -- \
+  python -m medical_rag_reranker.commands prep_data
+
+kubectl -n medical-rag exec deploy/worker -- \
+  python -m medical_rag_reranker.commands index
+```
+
+Optional quick check:
+
+```bash
+kubectl -n medical-rag exec deploy/worker -- sh -lc 'ls -lah artifacts && ls -lah data/processed'
+```
+
+That fallback is slower. A proper follow-up is to mount a shared persistent
+volume for `data/` and `artifacts/` into both `app` and `worker`.
+
+6. Expose the gateway locally and run smoke tests.
+
+Recommended on macOS:
+
+```bash
+# keep this command running in a separate terminal
+kubectl -n medical-rag port-forward service/nginx 8080:80
+```
+
+Then in another terminal:
+
+```bash
+export APP_URL=http://127.0.0.1:8080
+curl -sS "$APP_URL/" | head
+curl -sS "$APP_URL/api/health"
+```
+
+Alternative:
+
+```bash
+# on macOS with minikube --driver=docker this may keep the process open;
+# run it in a separate terminal and keep it alive while testing
+minikube service -n medical-rag nginx --url
+```
+
+If you use `minikube service --url`, copy the printed URL manually and replace
+the value of `APP_URL` in the commands below with that value, for example:
+
+```bash
+export APP_URL=http://127.0.0.1:52341
+```
+
+7. Explicit broker check: stop consumer, submit a job, confirm message is queued:
+
+```bash
+kubectl -n medical-rag scale deployment/worker --replicas=0
+
+RESP=$(curl -sS -X POST "$APP_URL/api/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is metformin used for?"}')
+echo "$RESP"
+JOB_ID=$(echo "$RESP" | python -c 'import sys,json; print(json.load(sys.stdin)["job_id"])')
+echo "$JOB_ID"
+
+kubectl -n medical-rag exec deploy/rabbitmq -- \
+  rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers
+```
+
+Expected for `inference_jobs`: `messages_ready >= 1` and `consumers = 0`.
+
+8. Start consumer, watch logs, and verify result persistence:
+
+```bash
+kubectl -n medical-rag scale deployment/worker --replicas=1
+kubectl -n medical-rag rollout status deployment/worker
+kubectl -n medical-rag logs -f deployment/worker
+```
+
+In a separate shell:
+
+```bash
+curl -sS "$APP_URL/api/jobs/$JOB_ID"
+curl -sS "$APP_URL/api/jobs/$JOB_ID/result"
+
+kubectl -n medical-rag exec deploy/postgres -- psql -U medical_rag -d medical_rag -c \
+"SELECT job_id,status,created_at,started_at,finished_at,error_message \
+FROM inference_jobs WHERE job_id='$JOB_ID';"
+```
+
+9. Stability check: delete the API pod and verify that Deployment restores it:
+
+```bash
+kubectl -n medical-rag delete pod -l app=app
+kubectl -n medical-rag rollout status deployment/app
+curl -sS "$APP_URL/api/health"
+```
+
+This demonstrates that the service is not tied to a single pod instance and is
+restored by Kubernetes after failure simulation.
 
 ---
 
