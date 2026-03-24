@@ -13,6 +13,7 @@ spec:
       labels:
         app: app
     spec:
+      serviceAccountName: medical-rag-workload
       containers:
         - name: app
           image: medical-rag-app:local

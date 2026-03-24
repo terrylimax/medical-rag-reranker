@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx
+  name: postgres
   namespace: medical-rag
 spec:
   selector:
-    app: nginx
+    app: postgres-master
   ports:
-    - name: http
-      port: 80
-      targetPort: 80
+    - name: postgres
+      port: 5432
+      targetPort: 5432
   type: ClusterIP

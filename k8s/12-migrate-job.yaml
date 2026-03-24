@@ -1,27 +1,25 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: worker
+  name: jobs-db-migrate
   namespace: medical-rag
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: worker
+  backoffLimit: 3
   template:
     metadata:
       labels:
-        app: worker
+        app: jobs-db-migrate
     spec:
+      restartPolicy: Never
       serviceAccountName: medical-rag-workload
       containers:
-        - name: worker
+        - name: migrate
           image: medical-rag-app:local
           imagePullPolicy: IfNotPresent
           command:
             - sh
             - -c
-            - celery -A medical_rag_reranker.jobs.tasks:celery_app worker --loglevel=info --queues=${JOBS_BROKER_QUEUE:-inference_jobs}
+            - python -m medical_rag_reranker.commands migrate_jobs_schema
           envFrom:
             - configMapRef:
                 name: medical-rag-config

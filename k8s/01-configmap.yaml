@@ -6,6 +6,9 @@ metadata:
 data:
   POSTGRES_DB: medical_rag
   POSTGRES_USER: medical_rag
+  POSTGRESQL_DATABASE: medical_rag
+  POSTGRESQL_USERNAME: medical_rag
+  POSTGRESQL_REPLICATION_USER: repl_user
   RABBITMQ_USER: guest
   JOBS_STORAGE: postgres
   JOBS_DISPATCH: broker

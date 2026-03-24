@@ -62,6 +62,7 @@ If you are validating the Kubernetes assignment, the fastest path is:
 
 ```bash
 minikube start
+minikube addons enable ingress
 
 minikube image build -t medical-rag-app:local -f Dockerfile .
 minikube image build -t medical-rag-nginx:local -f docker/nginx/Dockerfile .
@@ -70,31 +71,67 @@ minikube image build -t medical-rag-static:local -f docker/static/Dockerfile .
 kubectl apply -f k8s/00-namespace.yaml
 kubectl apply -f k8s/
 
+kubectl -n medical-rag delete job jobs-db-migrate --ignore-not-found
+
+kubectl -n medical-rag rollout status statefulset/postgres-master
+kubectl -n medical-rag rollout status statefulset/postgres-slave
+kubectl -n medical-rag rollout status deployment/rabbitmq
+kubectl -n medical-rag rollout status deployment/static
 kubectl -n medical-rag rollout status deployment/nginx
 kubectl -n medical-rag rollout status deployment/app
 kubectl -n medical-rag rollout status deployment/worker
 
-kubectl -n medical-rag exec deploy/app -- \
-  python -m medical_rag_reranker.commands migrate_jobs_schema
+kubectl apply -f k8s/12-migrate-job.yaml
+kubectl -n medical-rag wait --for=condition=complete job/jobs-db-migrate --timeout=180s
+```
+
+Quick HA verification:
+
+```bash
+kubectl -n medical-rag rollout status statefulset/postgres-master
+kubectl -n medical-rag rollout status statefulset/postgres-slave
+
+kubectl -n medical-rag exec pod/postgres-master-0 -- sh -lc \
+'PGPASSWORD="$POSTGRESQL_POSTGRES_PASSWORD" /opt/bitnami/postgresql/bin/psql -U postgres -d medical_rag -c "SELECT application_name, state, sync_state FROM pg_stat_replication;"'
+
+kubectl -n medical-rag exec pod/postgres-slave-0 -- sh -lc \
+'PGPASSWORD="$POSTGRESQL_POSTGRES_PASSWORD" /opt/bitnami/postgresql/bin/psql -U postgres -d medical_rag -c "SELECT pg_is_in_recovery();"'
 ```
 
 Terminal 1:
 
 ```bash
 # keep this running
-kubectl -n medical-rag port-forward service/nginx 8080:80
+kubectl -n ingress-nginx port-forward service/ingress-nginx-controller 8081:80
 ```
 
 Terminal 2:
 
 ```bash
-export APP_URL=http://127.0.0.1:8080
-curl -sS "$APP_URL/"
-curl -sS "$APP_URL/api/health"
+export APP_URL=http://127.0.0.1:8081
+export BASIC_AUTH=reviewer:reviewer
+curl -s -o /dev/null -w "%{http_code}\n" "$APP_URL/"
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/health"
+
+JOB_ID=$(curl -sS -u "$BASIC_AUTH" -X POST "$APP_URL/api/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is metformin used for?"}' | python -c 'import sys, json; print(json.load(sys.stdin)["job_id"])')
+
+until curl -sS -u "$BASIC_AUTH" "$APP_URL/api/jobs/$JOB_ID" | grep -q '"status":"SUCCEEDED"'; do
+  sleep 5
+done
+
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/jobs/$JOB_ID"
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/jobs/$JOB_ID/result"
 ```
 
 `APP_URL` will stay available in the current shell session, so you can reuse it
 for the next `curl` commands without retyping the URL.
+`BASIC_AUTH` must also be exported in the same shell where you run `curl -u`,
+otherwise `curl` will prompt for a password for an empty user.
+If ingress briefly returns `503` right after `kubectl apply`, wait until
+`kubectl -n medical-rag get endpoints app nginx` shows non-empty endpoints and
+retry the `curl` commands.
 
 For the full verification flow with broker queue check, Postgres persistence, and
 pod restart stability, see `Kubernetes (Minikube)` below.
@@ -520,26 +557,52 @@ Use `docker compose down -v` if you also want to remove Postgres data volume.
 ## Kubernetes (Minikube)
 
 The repository also includes a minimal Kubernetes deployment for local cluster
-validation in Minikube. This iteration intentionally stays simple: plain
-`Deployment` and `Service` resources, no Ingress/Helm/StatefulSet yet.
+validation in Minikube. This iteration uses `Deployment`, `Service`, and
+`Ingress` resources. PostgreSQL now runs in a master/slave topology using two
+separate `StatefulSet` resources based on the Bitnami master/slave replication
+pattern. As of March 24, 2026, the live Docker manifest available during
+validation was `docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4`, so the
+Kubernetes manifests pin to that image rather than the newer example tag.
 
 Kubernetes manifests are located in `/Users/terrylimax/medical-rag-reranker/k8s/`.
 
 Architecture in cluster:
 
-- `nginx` public NodePort gateway
+- `ingress-nginx` public entrypoint with Basic Auth
+- `nginx` internal ClusterIP gateway
 - `app` internal FastAPI producer
 - `static` internal static site
 - `worker` Celery consumer
 - `rabbitmq` internal broker
-- `postgres` internal database
+- `postgres-master` write database (`StatefulSet`)
+- `postgres-slave` read replica (`StatefulSet`)
 
 The namespace used by manifests is `medical-rag`.
+
+Registry secret note:
+
+- `/Users/terrylimax/medical-rag-reranker/k8s/01a-registry-secret.placeholder.yaml`
+  creates a placeholder `regcred` secret for the local Minikube flow.
+- `/Users/terrylimax/medical-rag-reranker/k8s/01b-workload-serviceaccount.yaml`
+  attaches `imagePullSecrets: [regcred]` to custom workload pods
+  (`app`, `worker`, `nginx`, `static`).
+- This placeholder is enough when you use `minikube image build`.
+- For a real private registry, replace `regcred` with actual credentials:
+
+```bash
+kubectl -n medical-rag delete secret regcred
+kubectl -n medical-rag create secret docker-registry regcred \
+  --docker-server=<registry> \
+  --docker-username=<user> \
+  --docker-password=<password> \
+  --docker-email=<email>
+```
 
 1. Start Minikube:
 
 ```bash
 minikube start
+minikube addons enable ingress
 ```
 
 2. Build local images directly into Minikube:
@@ -553,14 +616,23 @@ minikube image build -t medical-rag-static:local -f docker/static/Dockerfile .
 3. Apply manifests:
 
 ```bash
+# if you are upgrading from the previous Kubernetes iteration:
+kubectl -n medical-rag delete deployment postgres --ignore-not-found
+kubectl -n medical-rag delete statefulset postgres --ignore-not-found
+kubectl -n medical-rag delete service postgres-headless --ignore-not-found
+kubectl -n medical-rag delete pvc postgres-data --ignore-not-found
+kubectl -n medical-rag delete pvc postgres-data-postgres-0 --ignore-not-found
+
 kubectl apply -f k8s/00-namespace.yaml
 kubectl apply -f k8s/
+kubectl -n medical-rag delete job jobs-db-migrate --ignore-not-found
 ```
 
 4. Wait until core Deployments are ready:
 
 ```bash
-kubectl -n medical-rag rollout status deployment/postgres
+kubectl -n medical-rag rollout status statefulset/postgres-master
+kubectl -n medical-rag rollout status statefulset/postgres-slave
 kubectl -n medical-rag rollout status deployment/rabbitmq
 kubectl -n medical-rag rollout status deployment/static
 kubectl -n medical-rag rollout status deployment/app
@@ -570,7 +642,22 @@ kubectl -n medical-rag get pods
 kubectl -n medical-rag get svc
 ```
 
-5. Apply DB migrations for jobs storage:
+5. Apply DB migrations for jobs storage with a Kubernetes `Job`:
+
+```bash
+kubectl apply -f k8s/12-migrate-job.yaml
+kubectl -n medical-rag wait --for=condition=complete job/jobs-db-migrate --timeout=180s
+kubectl -n medical-rag logs job/jobs-db-migrate
+```
+
+If you need to rerun the migration job, delete and recreate it:
+
+```bash
+kubectl -n medical-rag delete job jobs-db-migrate --ignore-not-found
+kubectl apply -f k8s/12-migrate-job.yaml
+```
+
+Fallback for debugging only:
 
 ```bash
 kubectl -n medical-rag exec deploy/app -- \
@@ -609,36 +696,49 @@ kubectl -n medical-rag exec deploy/worker -- sh -lc 'ls -lah artifacts && ls -la
 That fallback is slower. A proper follow-up is to mount a shared persistent
 volume for `data/` and `artifacts/` into both `app` and `worker`.
 
-6. Expose the gateway locally and run smoke tests.
+PostgreSQL replication checks:
+
+```bash
+kubectl -n medical-rag exec pod/postgres-master-0 -- sh -lc \
+'PGPASSWORD="$POSTGRESQL_POSTGRES_PASSWORD" /opt/bitnami/postgresql/bin/psql -U postgres -d medical_rag -c "SELECT application_name, state, sync_state FROM pg_stat_replication;"'
+
+kubectl -n medical-rag exec pod/postgres-slave-0 -- sh -lc \
+'PGPASSWORD="$POSTGRESQL_POSTGRES_PASSWORD" /opt/bitnami/postgresql/bin/psql -U postgres -d medical_rag -c "SELECT pg_is_in_recovery();"'
+```
+
+Expected:
+
+- master sees at least one replica in `pg_stat_replication`
+- slave returns `t` for `pg_is_in_recovery()`
+
+6. Expose the ingress controller locally and verify Basic Auth.
 
 Recommended on macOS:
 
 ```bash
 # keep this command running in a separate terminal
-kubectl -n medical-rag port-forward service/nginx 8080:80
+kubectl -n ingress-nginx port-forward service/ingress-nginx-controller 8081:80
 ```
 
 Then in another terminal:
 
 ```bash
-export APP_URL=http://127.0.0.1:8080
-curl -sS "$APP_URL/" | head
-curl -sS "$APP_URL/api/health"
+export APP_URL=http://127.0.0.1:8081
+export BASIC_AUTH=reviewer:reviewer
+
+# without credentials ingress should reject the request
+curl -s -o /dev/null -w "%{http_code}\n" "$APP_URL/"
+
+# with credentials the gateway should allow access
+curl -sS -u "$BASIC_AUTH" "$APP_URL/" | head
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/health"
 ```
 
-Alternative:
+If ingress briefly returns `503` here, wait until both `app` and `nginx` have
+backend endpoints:
 
 ```bash
-# on macOS with minikube --driver=docker this may keep the process open;
-# run it in a separate terminal and keep it alive while testing
-minikube service -n medical-rag nginx --url
-```
-
-If you use `minikube service --url`, copy the printed URL manually and replace
-the value of `APP_URL` in the commands below with that value, for example:
-
-```bash
-export APP_URL=http://127.0.0.1:52341
+kubectl -n medical-rag get endpoints app nginx
 ```
 
 7. Explicit broker check: stop consumer, submit a job, confirm message is queued:
@@ -647,6 +747,7 @@ export APP_URL=http://127.0.0.1:52341
 kubectl -n medical-rag scale deployment/worker --replicas=0
 
 RESP=$(curl -sS -X POST "$APP_URL/api/jobs" \
+  -u "$BASIC_AUTH" \
   -H "Content-Type: application/json" \
   -d '{"question":"What is metformin used for?"}')
 echo "$RESP"
@@ -670,12 +771,18 @@ kubectl -n medical-rag logs -f deployment/worker
 In a separate shell:
 
 ```bash
-curl -sS "$APP_URL/api/jobs/$JOB_ID"
-curl -sS "$APP_URL/api/jobs/$JOB_ID/result"
+until curl -sS -u "$BASIC_AUTH" "$APP_URL/api/jobs/$JOB_ID" | grep -q '"status":"SUCCEEDED"'; do
+  sleep 5
+done
 
-kubectl -n medical-rag exec deploy/postgres -- psql -U medical_rag -d medical_rag -c \
-"SELECT job_id,status,created_at,started_at,finished_at,error_message \
-FROM inference_jobs WHERE job_id='$JOB_ID';"
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/jobs/$JOB_ID"
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/jobs/$JOB_ID/result"
+
+kubectl -n medical-rag exec pod/postgres-master-0 -- sh -lc \
+"PGPASSWORD=\$POSTGRESQL_PASSWORD /opt/bitnami/postgresql/bin/psql -U medical_rag -d medical_rag -c \"SELECT job_id,status,created_at,started_at,finished_at,error_message FROM inference_jobs WHERE job_id = '$JOB_ID';\""
+
+kubectl -n medical-rag exec pod/postgres-master-0 -- sh -lc \
+"PGPASSWORD=\$POSTGRESQL_PASSWORD /opt/bitnami/postgresql/bin/psql -U medical_rag -d medical_rag -c \"SELECT job_id, result->>'answer' AS answer FROM inference_results WHERE job_id = '$JOB_ID';\""
 ```
 
 9. Stability check: delete the API pod and verify that Deployment restores it:
@@ -683,11 +790,20 @@ FROM inference_jobs WHERE job_id='$JOB_ID';"
 ```bash
 kubectl -n medical-rag delete pod -l app=app
 kubectl -n medical-rag rollout status deployment/app
-curl -sS "$APP_URL/api/health"
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/health"
 ```
 
 This demonstrates that the service is not tied to a single pod instance and is
 restored by Kubernetes after failure simulation.
+
+PostgreSQL HA note:
+
+- write traffic goes to `service/postgres`, which points to `postgres-master`
+- replica traffic can go to `service/postgres-slave`
+- stable pod names are `postgres-master-0` and `postgres-slave-0`
+- storage is created through `volumeClaimTemplates`
+- application DSN stays unchanged because `service/postgres` is preserved for
+  client connections
 
 ---
 

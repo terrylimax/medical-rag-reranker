@@ -13,6 +13,7 @@ spec:
       labels:
         app: static
     spec:
+      serviceAccountName: medical-rag-workload
       containers:
         - name: static
           image: medical-rag-static:local
