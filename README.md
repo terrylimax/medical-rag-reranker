@@ -56,6 +56,86 @@ The project is set up so a reviewer can validate it end-to-end with the steps be
 
 Expected result: the training run finishes successfully and `train/loss` decreases over time.
 
+## Reviewer Shortcut: Kubernetes Iteration
+
+If you are validating the Kubernetes assignment, the fastest path is:
+
+```bash
+minikube start
+minikube addons enable ingress
+
+minikube image build -t medical-rag-app:local -f Dockerfile .
+minikube image build -t medical-rag-nginx:local -f docker/nginx/Dockerfile .
+minikube image build -t medical-rag-static:local -f docker/static/Dockerfile .
+
+kubectl apply -f k8s/00-namespace.yaml
+kubectl apply -f k8s/
+
+kubectl -n medical-rag delete job jobs-db-migrate --ignore-not-found
+
+kubectl -n medical-rag rollout status statefulset/postgres-master
+kubectl -n medical-rag rollout status statefulset/postgres-slave
+kubectl -n medical-rag rollout status deployment/rabbitmq
+kubectl -n medical-rag rollout status deployment/static
+kubectl -n medical-rag rollout status deployment/nginx
+kubectl -n medical-rag rollout status deployment/app
+kubectl -n medical-rag rollout status deployment/worker
+
+kubectl apply -f k8s/12-migrate-job.yaml
+kubectl -n medical-rag wait --for=condition=complete job/jobs-db-migrate --timeout=180s
+```
+
+Quick HA verification:
+
+```bash
+kubectl -n medical-rag rollout status statefulset/postgres-master
+kubectl -n medical-rag rollout status statefulset/postgres-slave
+
+kubectl -n medical-rag exec pod/postgres-master-0 -- sh -lc \
+'PGPASSWORD="$POSTGRESQL_POSTGRES_PASSWORD" /opt/bitnami/postgresql/bin/psql -U postgres -d medical_rag -c "SELECT application_name, state, sync_state FROM pg_stat_replication;"'
+
+kubectl -n medical-rag exec pod/postgres-slave-0 -- sh -lc \
+'PGPASSWORD="$POSTGRESQL_POSTGRES_PASSWORD" /opt/bitnami/postgresql/bin/psql -U postgres -d medical_rag -c "SELECT pg_is_in_recovery();"'
+```
+
+Terminal 1:
+
+```bash
+# keep this running
+kubectl -n ingress-nginx port-forward service/ingress-nginx-controller 8081:80
+```
+
+Terminal 2:
+
+```bash
+export APP_URL=http://127.0.0.1:8081
+export BASIC_AUTH=reviewer:reviewer
+curl -s -o /dev/null -w "%{http_code}\n" "$APP_URL/"
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/health"
+
+JOB_ID=$(curl -sS -u "$BASIC_AUTH" -X POST "$APP_URL/api/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is metformin used for?"}' | python -c 'import sys, json; print(json.load(sys.stdin)["job_id"])')
+
+until curl -sS -u "$BASIC_AUTH" "$APP_URL/api/jobs/$JOB_ID" | grep -q '"status":"SUCCEEDED"'; do
+  sleep 5
+done
+
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/jobs/$JOB_ID"
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/jobs/$JOB_ID/result"
+```
+
+`APP_URL` will stay available in the current shell session, so you can reuse it
+for the next `curl` commands without retyping the URL.
+`BASIC_AUTH` must also be exported in the same shell where you run `curl -u`,
+otherwise `curl` will prompt for a password for an empty user.
+If ingress briefly returns `503` right after `kubectl apply`, wait until
+`kubectl -n medical-rag get endpoints app nginx` shows non-empty endpoints and
+retry the `curl` commands.
+
+For the full verification flow with broker queue check, Postgres persistence, and
+pod restart stability, see `Kubernetes (Minikube)` below.
+
 ## Repository Structure
 
 ```text
@@ -286,6 +366,542 @@ Notes:
 - Batch input JSONL should have `query_id` and either `text` or `question`.
 - Retrieval metrics (`Precision@k`, `Recall@k`, `NDCG@k`) remain the primary KPI.
 - Generation here is a quality/demo layer via curated examples.
+
+---
+
+## Async-Ready Job Storage
+
+The project now includes a job abstraction for inference:
+
+- `submit_job` creates a job (`PENDING -> RUNNING -> SUCCEEDED/FAILED`)
+- `job_status` returns current status and timestamps
+- `job_result` returns persisted result payload
+
+Default storage is file-based (`runs/jobs/`), but you can switch to PostgreSQL
+without changing business logic (repositories are selected via config).
+
+### File storage (default)
+
+```bash
+poetry run python -m medical_rag_reranker.commands submit_job \
+  --question "What is metformin used for?"
+```
+
+### PostgreSQL storage
+
+1. Install PostgreSQL driver for SQLAlchemy (once):
+
+```bash
+poetry add "psycopg[binary]"
+```
+
+2. Apply migrations (`jobs.storage=postgres` + DSN):
+
+```bash
+poetry run python -m medical_rag_reranker.commands migrate_jobs_schema \
+  --overrides "jobs.storage=postgres,jobs.postgres.dsn=postgresql+psycopg://user:password@127.0.0.1:5432/medical_rag"
+```
+
+3. Submit a job using PostgreSQL-backed repositories:
+
+```bash
+poetry run python -m medical_rag_reranker.commands submit_job \
+  --question "What is metformin used for?" \
+  --overrides "jobs.storage=postgres,jobs.postgres.dsn=postgresql+psycopg://user:password@127.0.0.1:5432/medical_rag"
+```
+
+The PostgreSQL schema is managed via Alembic migrations in `alembic/versions/`.
+
+---
+
+## Docker Compose (Nginx + App + Static + Broker)
+
+This is the recommended end-to-end check for reviewers.
+
+1. Prepare env and host folders:
+
+```bash
+cp .env.example .env
+mkdir -p data artifacts runs reports .hf_cache
+```
+
+2. Start services:
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+Expected services:
+
+- `nginx` public gateway (the only published web port)
+- `app` internal FastAPI ASGI application
+- `static` internal static site
+- `worker` Celery consumer
+- `rabbitmq` broker
+- `postgres` storage
+
+Reviewer shortcut for the nginx task:
+
+```bash
+docker compose up -d --build
+curl -sS "http://127.0.0.1:${NGINX_PORT:-8080}/" | head
+curl -sS "http://127.0.0.1:${NGINX_PORT:-8080}/api/health"
+docker compose exec app python -m medical_rag_reranker.commands migrate_jobs_schema
+curl -sS -X POST "http://127.0.0.1:${NGINX_PORT:-8080}/api/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is metformin used for?"}'
+docker compose exec rabbitmq rabbitmqctl list_queues \
+  name messages_ready messages_unacknowledged consumers
+docker compose exec postgres psql -U medical_rag -d medical_rag -c "\dt"
+```
+
+Quick web checks:
+
+```bash
+curl -sS "http://127.0.0.1:${NGINX_PORT:-8080}/" | head
+curl -sS "http://127.0.0.1:${NGINX_PORT:-8080}/api/health"
+```
+
+3. Apply Postgres migrations for jobs:
+
+```bash
+docker compose exec app \
+  python -m medical_rag_reranker.commands migrate_jobs_schema
+```
+
+What this command does:
+
+- connects to PostgreSQL via `JOBS_POSTGRES_DSN`
+- applies Alembic migrations up to `head`
+- creates or upgrades `inference_jobs` and `inference_results` schema as needed
+- is idempotent (safe to run multiple times)
+
+Important: `migrate_jobs_schema` does not publish anything to broker and does not start worker execution.
+
+Quick DB check:
+
+```bash
+docker compose exec postgres psql -U medical_rag -d medical_rag -c "\dt"
+```
+
+4. Stop consumer for an explicit broker check:
+
+```bash
+docker compose stop worker
+```
+
+5. Send a test request to producer API and capture `job_id`:
+
+```bash
+RESP=$(curl -sS -X POST "http://127.0.0.1:${NGINX_PORT:-8080}/api/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is metformin used for?"}')
+echo "$RESP"
+JOB_ID=$(echo "$RESP" | python -c 'import sys,json; print(json.load(sys.stdin)["job_id"])')
+echo "$JOB_ID"
+```
+
+6. Verify that message is waiting in RabbitMQ queue:
+
+```bash
+docker compose exec rabbitmq rabbitmqctl list_queues \
+  name messages_ready messages_unacknowledged consumers
+```
+
+Expected for `inference_jobs`: `messages_ready >= 1` and `consumers = 0`.
+
+7. Start consumer and watch processing:
+
+```bash
+docker compose start worker
+docker compose logs -f worker
+```
+
+Expected worker logs: `Task ... received` and then `succeeded` (or `failed`).
+
+8. Check status and result by `job_id`:
+
+```bash
+curl -sS "http://127.0.0.1:${NGINX_PORT:-8080}/api/jobs/$JOB_ID"
+curl -sS "http://127.0.0.1:${NGINX_PORT:-8080}/api/jobs/$JOB_ID/result"
+```
+
+Expected: status eventually becomes `SUCCEEDED` and `/result` returns payload.
+
+9. Verify persisted data in PostgreSQL:
+
+```bash
+docker compose exec postgres psql -U medical_rag -d medical_rag -c \
+"SELECT job_id,status,created_at,started_at,finished_at,error_message \
+FROM inference_jobs WHERE job_id='$JOB_ID';"
+```
+
+```bash
+docker compose exec postgres psql -U medical_rag -d medical_rag -c \
+"SELECT job_id, jsonb_pretty(result) FROM inference_results WHERE job_id='$JOB_ID';"
+```
+
+If you keep worker running during submission, queue may be drained immediately and step 6 will be less visible.
+
+10. Stop services:
+
+```bash
+docker compose down
+```
+
+Use `docker compose down -v` if you also want to remove Postgres data volume.
+
+---
+
+## Kubernetes (Minikube)
+
+The repository also includes a minimal Kubernetes deployment for local cluster
+validation in Minikube. This iteration uses `Deployment`, `Service`, and
+`Ingress` resources. PostgreSQL now runs in a master/slave topology using two
+separate `StatefulSet` resources based on the Bitnami master/slave replication
+pattern. As of March 24, 2026, the live Docker manifest available during
+validation was `docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4`, so the
+Kubernetes manifests pin to that image rather than the newer example tag.
+
+Kubernetes manifests are located in `/Users/terrylimax/medical-rag-reranker/k8s/`.
+
+Architecture in cluster:
+
+- `ingress-nginx` public entrypoint with Basic Auth
+- `nginx` internal ClusterIP gateway
+- `app` internal FastAPI producer
+- `static` internal static site
+- `worker` Celery consumer
+- `rabbitmq` internal broker
+- `postgres-master` write database (`StatefulSet`)
+- `postgres-slave` read replica (`StatefulSet`)
+
+The namespace used by manifests is `medical-rag`.
+
+Registry secret note:
+
+- `/Users/terrylimax/medical-rag-reranker/k8s/01a-registry-secret.placeholder.yaml`
+  creates a placeholder `regcred` secret for the local Minikube flow.
+- `/Users/terrylimax/medical-rag-reranker/k8s/01b-workload-serviceaccount.yaml`
+  attaches `imagePullSecrets: [regcred]` to custom workload pods
+  (`app`, `worker`, `nginx`, `static`).
+- This placeholder is enough when you use `minikube image build`.
+- For a real private registry, replace `regcred` with actual credentials:
+
+```bash
+kubectl -n medical-rag delete secret regcred
+kubectl -n medical-rag create secret docker-registry regcred \
+  --docker-server=<registry> \
+  --docker-username=<user> \
+  --docker-password=<password> \
+  --docker-email=<email>
+```
+
+1. Start Minikube:
+
+```bash
+minikube start
+minikube addons enable ingress
+```
+
+2. Build local images directly into Minikube:
+
+```bash
+minikube image build -t medical-rag-app:local -f Dockerfile .
+minikube image build -t medical-rag-nginx:local -f docker/nginx/Dockerfile .
+minikube image build -t medical-rag-static:local -f docker/static/Dockerfile .
+```
+
+3. Apply manifests:
+
+```bash
+# if you are upgrading from the previous Kubernetes iteration:
+kubectl -n medical-rag delete deployment postgres --ignore-not-found
+kubectl -n medical-rag delete statefulset postgres --ignore-not-found
+kubectl -n medical-rag delete service postgres-headless --ignore-not-found
+kubectl -n medical-rag delete pvc postgres-data --ignore-not-found
+kubectl -n medical-rag delete pvc postgres-data-postgres-0 --ignore-not-found
+
+kubectl apply -f k8s/00-namespace.yaml
+kubectl apply -f k8s/
+kubectl -n medical-rag delete job jobs-db-migrate --ignore-not-found
+```
+
+4. Wait until core Deployments are ready:
+
+```bash
+kubectl -n medical-rag rollout status statefulset/postgres-master
+kubectl -n medical-rag rollout status statefulset/postgres-slave
+kubectl -n medical-rag rollout status deployment/rabbitmq
+kubectl -n medical-rag rollout status deployment/static
+kubectl -n medical-rag rollout status deployment/app
+kubectl -n medical-rag rollout status deployment/worker
+kubectl -n medical-rag rollout status deployment/nginx
+kubectl -n medical-rag get pods
+kubectl -n medical-rag get svc
+```
+
+5. Apply DB migrations for jobs storage with a Kubernetes `Job`:
+
+```bash
+kubectl apply -f k8s/12-migrate-job.yaml
+kubectl -n medical-rag wait --for=condition=complete job/jobs-db-migrate --timeout=180s
+kubectl -n medical-rag logs job/jobs-db-migrate
+```
+
+If you need to rerun the migration job, delete and recreate it:
+
+```bash
+kubectl -n medical-rag delete job jobs-db-migrate --ignore-not-found
+kubectl apply -f k8s/12-migrate-job.yaml
+```
+
+Fallback for debugging only:
+
+```bash
+kubectl -n medical-rag exec deploy/app -- \
+  python -m medical_rag_reranker.commands migrate_jobs_schema
+```
+
+Kubernetes smoke-test note:
+
+The Kubernetes manifests are configured to use small bundled demo retrieval
+assets already shipped inside the image:
+
+- `/app/medical_rag_reranker/demo_assets/corpus.jsonl`
+- `/app/medical_rag_reranker/demo_assets/bm25_index.json`
+
+Because of that, `prep_data` and `index` are not required for the basic
+Minikube validation flow after rebuilding the images.
+
+If you still use older images or deliberately switch back to the default
+`data/processed` + `artifacts/` paths and see
+`FileNotFoundError: artifacts/bm25_index.json.gz`, the temporary workaround is:
+
+```bash
+kubectl -n medical-rag exec deploy/worker -- \
+  python -m medical_rag_reranker.commands prep_data
+
+kubectl -n medical-rag exec deploy/worker -- \
+  python -m medical_rag_reranker.commands index
+```
+
+Optional quick check:
+
+```bash
+kubectl -n medical-rag exec deploy/worker -- sh -lc 'ls -lah artifacts && ls -lah data/processed'
+```
+
+That fallback is slower. A proper follow-up is to mount a shared persistent
+volume for `data/` and `artifacts/` into both `app` and `worker`.
+
+PostgreSQL replication checks:
+
+```bash
+kubectl -n medical-rag exec pod/postgres-master-0 -- sh -lc \
+'PGPASSWORD="$POSTGRESQL_POSTGRES_PASSWORD" /opt/bitnami/postgresql/bin/psql -U postgres -d medical_rag -c "SELECT application_name, state, sync_state FROM pg_stat_replication;"'
+
+kubectl -n medical-rag exec pod/postgres-slave-0 -- sh -lc \
+'PGPASSWORD="$POSTGRESQL_POSTGRES_PASSWORD" /opt/bitnami/postgresql/bin/psql -U postgres -d medical_rag -c "SELECT pg_is_in_recovery();"'
+```
+
+Expected:
+
+- master sees at least one replica in `pg_stat_replication`
+- slave returns `t` for `pg_is_in_recovery()`
+
+6. Expose the ingress controller locally and verify Basic Auth.
+
+Recommended on macOS:
+
+```bash
+# keep this command running in a separate terminal
+kubectl -n ingress-nginx port-forward service/ingress-nginx-controller 8081:80
+```
+
+Then in another terminal:
+
+```bash
+export APP_URL=http://127.0.0.1:8081
+export BASIC_AUTH=reviewer:reviewer
+
+# without credentials ingress should reject the request
+curl -s -o /dev/null -w "%{http_code}\n" "$APP_URL/"
+
+# with credentials the gateway should allow access
+curl -sS -u "$BASIC_AUTH" "$APP_URL/" | head
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/health"
+```
+
+If ingress briefly returns `503` here, wait until both `app` and `nginx` have
+backend endpoints:
+
+```bash
+kubectl -n medical-rag get endpoints app nginx
+```
+
+7. Explicit broker check: stop consumer, submit a job, confirm message is queued:
+
+```bash
+kubectl -n medical-rag scale deployment/worker --replicas=0
+
+RESP=$(curl -sS -X POST "$APP_URL/api/jobs" \
+  -u "$BASIC_AUTH" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is metformin used for?"}')
+echo "$RESP"
+JOB_ID=$(echo "$RESP" | python -c 'import sys,json; print(json.load(sys.stdin)["job_id"])')
+echo "$JOB_ID"
+
+kubectl -n medical-rag exec deploy/rabbitmq -- \
+  rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers
+```
+
+Expected for `inference_jobs`: `messages_ready >= 1` and `consumers = 0`.
+
+8. Start consumer, watch logs, and verify result persistence:
+
+```bash
+kubectl -n medical-rag scale deployment/worker --replicas=1
+kubectl -n medical-rag rollout status deployment/worker
+kubectl -n medical-rag logs -f deployment/worker
+```
+
+In a separate shell:
+
+```bash
+until curl -sS -u "$BASIC_AUTH" "$APP_URL/api/jobs/$JOB_ID" | grep -q '"status":"SUCCEEDED"'; do
+  sleep 5
+done
+
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/jobs/$JOB_ID"
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/jobs/$JOB_ID/result"
+
+kubectl -n medical-rag exec pod/postgres-master-0 -- sh -lc \
+"PGPASSWORD=\$POSTGRESQL_PASSWORD /opt/bitnami/postgresql/bin/psql -U medical_rag -d medical_rag -c \"SELECT job_id,status,created_at,started_at,finished_at,error_message FROM inference_jobs WHERE job_id = '$JOB_ID';\""
+
+kubectl -n medical-rag exec pod/postgres-master-0 -- sh -lc \
+"PGPASSWORD=\$POSTGRESQL_PASSWORD /opt/bitnami/postgresql/bin/psql -U medical_rag -d medical_rag -c \"SELECT job_id, result->>'answer' AS answer FROM inference_results WHERE job_id = '$JOB_ID';\""
+```
+
+9. Stability check: delete the API pod and verify that Deployment restores it:
+
+```bash
+kubectl -n medical-rag delete pod -l app=app
+kubectl -n medical-rag rollout status deployment/app
+curl -sS -u "$BASIC_AUTH" "$APP_URL/api/health"
+```
+
+This demonstrates that the service is not tied to a single pod instance and is
+restored by Kubernetes after failure simulation.
+
+PostgreSQL HA note:
+
+- write traffic goes to `service/postgres`, which points to `postgres-master`
+- replica traffic can go to `service/postgres-slave`
+- stable pod names are `postgres-master-0` and `postgres-slave-0`
+- storage is created through `volumeClaimTemplates`
+- application DSN stays unchanged because `service/postgres` is preserved for
+  client connections
+
+---
+
+## Docker Image (Single-Container CLI)
+
+If you want to validate the baseline pipeline without `docker compose`, you can
+run the project as a single Docker image and execute CLI commands inside it.
+
+1. Build image:
+
+```bash
+docker build -t medical-rag-reranker:latest .
+```
+
+2. Prepare host folders for mounted outputs:
+
+```bash
+mkdir -p data artifacts runs reports .hf_cache
+```
+
+3. Prepare processed files:
+
+```bash
+docker run --rm -it \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/artifacts:/app/artifacts" \
+  -v "$(pwd)/runs:/app/runs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.hf_cache:/app/.cache/huggingface" \
+  medical-rag-reranker:latest \
+  python -m medical_rag_reranker.commands prep_data --overrides 'data.use_dvc=false'
+```
+
+4. Build BM25 index:
+
+```bash
+docker run --rm -it \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/artifacts:/app/artifacts" \
+  -v "$(pwd)/runs:/app/runs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.hf_cache:/app/.cache/huggingface" \
+  medical-rag-reranker:latest \
+  python -m medical_rag_reranker.commands index --overrides 'data.use_dvc=false,retrieval=bm25'
+```
+
+5. Generate an answer:
+
+```bash
+docker run --rm -it \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/artifacts:/app/artifacts" \
+  -v "$(pwd)/runs:/app/runs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.hf_cache:/app/.cache/huggingface" \
+  medical-rag-reranker:latest \
+  python -m medical_rag_reranker.commands generate \
+  --question "What is metformin used for?" \
+  --overrides 'data.use_dvc=false,retrieval=bm25'
+```
+
+6. Optional retrieval evaluation:
+
+```bash
+docker run --rm -it \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/artifacts:/app/artifacts" \
+  -v "$(pwd)/runs:/app/runs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.hf_cache:/app/.cache/huggingface" \
+  medical-rag-reranker:latest \
+  python -m medical_rag_reranker.commands retrieval_run --overrides 'data.use_dvc=false,retrieval=bm25'
+
+docker run --rm -it \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/artifacts:/app/artifacts" \
+  -v "$(pwd)/runs:/app/runs" \
+  -v "$(pwd)/reports:/app/reports" \
+  -v "$(pwd)/.hf_cache:/app/.cache/huggingface" \
+  medical-rag-reranker:latest \
+  python -m medical_rag_reranker.commands eval_retrieval --overrides 'data.use_dvc=false,retrieval=bm25'
+```
+
+Notes:
+
+- The first `generate` call downloads `google/flan-t5-small` into `.hf_cache`,
+  so it may take some time.
+- If network access is limited, point generation to a local model:
+
+```bash
+--overrides 'data.use_dvc=false,retrieval=bm25,generation.llm_model_name=/app/models/your_local_model'
+```
+
+Mount the model directory as well:
+
+```bash
+-v "$(pwd)/models:/app/models"
+```
 
 ---
 

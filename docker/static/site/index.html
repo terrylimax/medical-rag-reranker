@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Medical RAG Gateway</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Medical RAG Reranker</p>
+        <h1>
+          Nginx fronts the platform, FastAPI serves the API, Celery handles
+          jobs.
+        </h1>
+        <p class="lede">
+          This static page is served by a dedicated container. API traffic is
+          routed through nginx to the internal ASGI application under
+          <code>/api</code>.
+        </p>
+        <div class="actions">
+          <a href="/api/health">Check API health</a>
+          <a href="/api/docs">Open API docs</a>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h2>Gateway</h2>
+          <p>
+            Public traffic enters nginx. It proxies <code>/api/*</code> to the
+            FastAPI app and everything else to this static site.
+          </p>
+        </article>
+        <article class="card">
+          <h2>Application</h2>
+          <p>
+            The API runs behind nginx on an internal Docker network via an ASGI
+            server in production mode.
+          </p>
+        </article>
+        <article class="card">
+          <h2>Background jobs</h2>
+          <p>
+            Requests create jobs in PostgreSQL and publish them to RabbitMQ.
+            Celery workers consume and process them asynchronously.
+          </p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

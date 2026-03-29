@@ -4,13 +4,13 @@ enabled: true
 mode: single
 
 # Used when question is not passed directly.
-queries_path: ${paths.data_dir}/processed/eval_queries.jsonl
+queries_path: ${oc.env:GENERATION_QUERIES_PATH,${paths.data_dir}/processed/eval_queries.jsonl}
 
 # Corpus JSONL with doc_id/text/source fields.
-corpus_path: ${paths.data_dir}/processed/corpus.jsonl
+corpus_path: ${oc.env:GENERATION_CORPUS_PATH,${paths.data_dir}/processed/corpus.jsonl}
 
 # Index file or hybrid manifest path.
-index: ${paths.artifacts_dir}/${retrieval.index_file}
+index: ${oc.env:GENERATION_INDEX_PATH,${paths.artifacts_dir}/${retrieval.index_file}}
 
 top_k: 5
 seed: 42

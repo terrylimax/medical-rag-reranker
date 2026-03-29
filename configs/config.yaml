@@ -11,6 +11,7 @@ defaults:
   - model: model
   - train: train
   - logging: mlflow
+  - jobs: jobs
   - paths@paths
   - retrieval: bm25
   - run@retrieval_run: retrieval_run

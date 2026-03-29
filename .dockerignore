@@ -1,0 +1,26 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Runtime/generated artifacts (mount as volumes instead)
+data/
+artifacts/
+runs/
+reports/
+mlruns/
+checkpoints/
+logs/
+
+# Local DVC storage/cache
+dvc_storage/
+.dvc/cache/
+
+# Local build/cache dirs
+.cache/
+dist/
+build/

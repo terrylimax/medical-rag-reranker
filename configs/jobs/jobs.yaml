@@ -1,0 +1,32 @@
+enabled: true
+
+# sync | broker
+dispatch: ${oc.env:JOBS_DISPATCH,sync}
+
+# file | postgres
+storage: ${oc.env:JOBS_STORAGE,file}
+
+# If true, submit_job immediately dispatches processing.
+auto_dispatch: ${oc.decode:${oc.env:JOBS_AUTO_DISPATCH,true}}
+
+# Base folder for persisted jobs/results.
+store_dir: ${oc.env:JOBS_STORE_DIR,${paths.runs_dir}/jobs}
+
+postgres:
+  # Example:
+  # dsn: postgresql+psycopg://user:password@127.0.0.1:5432/medical_rag
+  dsn: ${oc.env:JOBS_POSTGRES_DSN,null}
+  # If true, apply Alembic migrations automatically on runtime bootstrap.
+  init_schema: ${oc.decode:${oc.env:JOBS_POSTGRES_INIT_SCHEMA,false}}
+
+broker:
+  # Example:
+  # url: amqp://guest:guest@rabbitmq:5672//
+  url: ${oc.env:JOBS_BROKER_URL,null}
+  queue: ${oc.env:JOBS_BROKER_QUEUE,inference_jobs}
+  task_name: ${oc.env:JOBS_BROKER_TASK_NAME,medical_rag_reranker.jobs.tasks.process_inference_job}
+  routing_key: ${oc.env:JOBS_BROKER_ROUTING_KEY,null}
+
+api:
+  host: ${oc.env:JOBS_API_HOST,0.0.0.0}
+  port: ${oc.decode:${oc.env:JOBS_API_PORT,8080}}

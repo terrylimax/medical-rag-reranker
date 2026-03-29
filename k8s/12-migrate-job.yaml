@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: jobs-db-migrate
+  namespace: medical-rag
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: jobs-db-migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: medical-rag-workload
+      containers:
+        - name: migrate
+          image: medical-rag-app:local
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - python -m medical_rag_reranker.commands migrate_jobs_schema
+          envFrom:
+            - configMapRef:
+                name: medical-rag-config
+            - secretRef:
+                name: medical-rag-secrets
