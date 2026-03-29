@@ -2,3 +2,4 @@ question: null
 queries_path: ${generation.queries_path}
 num_questions: 1
 output_report: reports/rag_demo.md
+output_jsonl: reports/rag_demo.jsonl

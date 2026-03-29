@@ -13,10 +13,15 @@ corpus_path: ${oc.env:GENERATION_CORPUS_PATH,${paths.data_dir}/processed/corpus.
 index: ${oc.env:GENERATION_INDEX_PATH,${paths.artifacts_dir}/${retrieval.index_file}}
 
 top_k: 5
+retrieve_top_k: 20
 seed: 42
+use_reranker: false
+reranker_checkpoint_path: ${oc.env:GENERATION_RERANKER_CHECKPOINT_PATH,null}
+reranker_batch_size: 16
 
 # Local transformers generation backend.
 llm_model_name: google/flan-t5-small
+local_files_only: ${oc.env:GENERATION_LOCAL_FILES_ONLY,false}
 max_input_tokens: 1024
 max_new_tokens: 192
 temperature: 0.0
