@@ -4,6 +4,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import torch
@@ -54,6 +55,20 @@ def _resolve_query_id(query_obj: dict, fallback_idx: int) -> str:
     if qid is None:
         qid = f"query-{fallback_idx}"
     return str(qid)
+
+
+def _as_bool(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+
+    text = str(value).strip().lower()
+    if text in ("1", "true", "yes", "y", "on"):
+        return True
+    if text in ("0", "false", "no", "n", "off", ""):
+        return False
+    raise ValueError(f"Cannot parse boolean value from: {value!r}")
 
 
 def _resolve_manifest_path(index_arg: str) -> Path:
@@ -118,6 +133,7 @@ def _load_retriever(retriever_name: str, index_path: str):
 
 
 def _load_docstore(corpus_path: str) -> dict[str, dict[str, Any]]:
+    """Load corpus rows into a `{doc_id: row}` map used during generation."""
     path = Path(corpus_path)
     if not path.exists():
         raise FileNotFoundError(
@@ -167,6 +183,8 @@ def _build_prompt(question: str, docs: list[RetrievedChunk]) -> str:
 
 
 class LocalGenerator:
+    """Thin wrapper over local Hugging Face generation models."""
+
     def __init__(
         self,
         model_name: str,
@@ -174,28 +192,41 @@ class LocalGenerator:
         do_sample: bool,
         temperature: float,
         max_input_tokens: int,
+        local_files_only: bool = False,
     ) -> None:
         self.model_name = model_name
         self.max_new_tokens = int(max_new_tokens)
         self.do_sample = bool(do_sample)
         self.temperature = float(temperature)
         self.max_input_tokens = int(max_input_tokens)
+        self.local_files_only = bool(local_files_only)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                model_name,
+                local_files_only=self.local_files_only,
+            )
         except Exception as e:  # pragma: no cover - environment-specific
             raise RuntimeError(
                 f"Failed to load tokenizer for `{model_name}`. "
-                "If this is a sentencepiece model, ensure sentencepiece is installed."
+                "If this is a sentencepiece model, ensure sentencepiece is installed. "
+                "If running offline, ensure the model is already cached locally or set "
+                "`generation.local_files_only=false`."
             ) from e
 
         self.is_seq2seq = True
         try:
-            self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+            self.model = AutoModelForSeq2SeqLM.from_pretrained(
+                model_name,
+                local_files_only=self.local_files_only,
+            )
         except Exception:
             self.is_seq2seq = False
-            self.model = AutoModelForCausalLM.from_pretrained(model_name)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                local_files_only=self.local_files_only,
+            )
 
         if (
             self.tokenizer.pad_token_id is None
@@ -243,6 +274,7 @@ def _retrieve_docs(
     question: str,
     top_k: int,
 ) -> list[RetrievedChunk]:
+    """Resolve retrieved doc ids into full text chunks from the docstore."""
     hits = retriever.retrieve(question, top_k=int(top_k))
     rows: list[RetrievedChunk] = []
     for h in hits:
@@ -270,38 +302,152 @@ def _detect_citations(answer: str) -> list[str]:
     return unique
 
 
+def _partition_citations(
+    citations: list[str],
+    retrieved_doc_ids: list[str],
+) -> tuple[list[str], list[str]]:
+    retrieved_set = set(retrieved_doc_ids)
+    supported: list[str] = []
+    unsupported: list[str] = []
+    for citation in citations:
+        if citation in retrieved_set:
+            supported.append(citation)
+        else:
+            unsupported.append(citation)
+    return supported, unsupported
+
+
+def _serialize_doc(
+    *,
+    doc_id: str,
+    score: float,
+    text: str,
+    source: str | None = None,
+    retrieval_score: float | None = None,
+    reranker_score: float | None = None,
+) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "doc_id": doc_id,
+        "score": float(score),
+        "text": text,
+        "source": source,
+    }
+    if retrieval_score is not None:
+        row["retrieval_score"] = float(retrieval_score)
+    if reranker_score is not None:
+        row["reranker_score"] = float(reranker_score)
+    return row
+
+
 def _run_one_question(
     llm: LocalGenerator,
     retriever,
     docstore: dict[str, dict[str, Any]],
     question: str,
     top_k: int,
+    retrieve_top_k: int,
+    reranker=None,
     query_id: str | None = None,
 ) -> dict[str, Any]:
-    retrieved = _retrieve_docs(
+    """Run retrieval, optional reranking, and generation for one question."""
+    total_start = perf_counter()
+    retrieval_start = perf_counter()
+    retrieved_candidates = _retrieve_docs(
         retriever=retriever,
         docstore=docstore,
         question=question,
-        top_k=top_k,
+        top_k=retrieve_top_k if reranker is not None else top_k,
     )
+    retrieval_latency_ms = (perf_counter() - retrieval_start) * 1000.0
+    retrieved = retrieved_candidates
+    rerank_latency_ms = 0.0
+    retrieved_before_rerank: list[dict[str, Any]] | None = None
+
+    if reranker is not None and retrieved_candidates:
+        from medical_rag_reranker.inference.rerank import CandidateDoc
+
+        retrieved_before_rerank = [
+            _serialize_doc(
+                doc_id=d.doc_id,
+                score=d.score,
+                retrieval_score=d.score,
+                text=d.text,
+                source=d.source,
+            )
+            for d in retrieved_candidates
+        ]
+        reranked_docs, rerank_latency_ms = reranker.rerank(
+            question=question,
+            candidates=[
+                CandidateDoc(
+                    doc_id=d.doc_id,
+                    text=d.text,
+                    retrieval_score=d.score,
+                    source=d.source,
+                )
+                for d in retrieved_candidates
+            ],
+            top_k=top_k,
+        )
+        retrieved = [
+            RetrievedChunk(
+                doc_id=d.doc_id,
+                score=d.reranker_score,
+                text=d.text,
+                source=d.source,
+            )
+            for d in reranked_docs
+        ]
+
     prompt = _build_prompt(question=question, docs=retrieved)
+    generation_start = perf_counter()
     answer = llm.generate(prompt)
+    generation_latency_ms = (perf_counter() - generation_start) * 1000.0
     citations_detected = _detect_citations(answer)
+    supported_citations, unsupported_citations = _partition_citations(
+        citations=citations_detected,
+        retrieved_doc_ids=[doc.doc_id for doc in retrieved],
+    )
 
     out: dict[str, Any] = {
         "question": question,
         "retrieved": [
-            {
-                "doc_id": d.doc_id,
-                "score": d.score,
-                "text": d.text,
-                "source": d.source,
-            }
+            _serialize_doc(
+                doc_id=d.doc_id,
+                score=d.score,
+                text=d.text,
+                source=d.source,
+            )
             for d in retrieved
         ],
         "answer": answer,
         "citations_detected": citations_detected,
+        "supported_citations_detected": supported_citations,
+        "unsupported_citations_detected": unsupported_citations,
+        "reranker_enabled": reranker is not None,
+        "retrieval_latency_ms": float(retrieval_latency_ms),
+        "generation_latency_ms": float(generation_latency_ms),
+        "end_to_end_latency_ms": float((perf_counter() - total_start) * 1000.0),
     }
+    if retrieved_before_rerank is not None:
+        retrieval_scores_by_doc_id = {
+            str(doc["doc_id"]): float(doc["retrieval_score"])
+            for doc in retrieved_before_rerank
+        }
+        out["retrieved_before_rerank"] = retrieved_before_rerank
+        out["retrieved"] = [
+            _serialize_doc(
+                doc_id=d.doc_id,
+                score=d.score,
+                retrieval_score=retrieval_scores_by_doc_id.get(d.doc_id, d.score),
+                reranker_score=d.score,
+                text=d.text,
+                source=d.source,
+            )
+            for d in retrieved
+        ]
+        out["rerank_latency_ms"] = float(rerank_latency_ms)
+
     if query_id is not None:
         out["query_id"] = query_id
     return out
@@ -316,11 +462,18 @@ def _write_examples_report(
 ) -> None:
     report_path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
-    lines.append("# Baseline Generation Examples (No Reranker)")
+    reranker_enabled = any(bool(item.get("reranker_enabled")) for item in results)
+    title = (
+        "# RAG Generation Examples (With Reranker)"
+        if reranker_enabled
+        else "# Baseline Generation Examples (No Reranker)"
+    )
+    lines.append(title)
     lines.append("")
     lines.append(f"- retriever: `{retriever_name}`")
     lines.append(f"- llm_model: `{llm_model_name}`")
     lines.append(f"- top_k: `{top_k}`")
+    lines.append(f"- reranker_enabled: `{reranker_enabled}`")
     lines.append(f"- num_examples: `{len(results)}`")
     lines.append("")
 
@@ -330,13 +483,30 @@ def _write_examples_report(
         lines.append("")
         lines.append(f"**Question**: {item['question']}")
         lines.append("")
-        lines.append("**Top docs**:")
+        before_rerank = item.get("retrieved_before_rerank", [])
+        if before_rerank:
+            lines.append("**Top docs before rerank**:")
+            for rank, doc in enumerate(before_rerank, start=1):
+                lines.append(
+                    f"{rank}. `{doc['doc_id']}` "
+                    f"(score={doc['score']:.4f}) "
+                    f"- {_truncate_text(str(doc.get('text', '')))}"
+                )
+            lines.append("")
+
+        header = "**Top docs after rerank**:" if before_rerank else "**Top docs**:"
+        lines.append(header)
         for rank, doc in enumerate(item.get("retrieved", []), start=1):
             lines.append(
                 f"{rank}. `{doc['doc_id']}` "
                 f"(score={doc['score']:.4f}) "
                 f"- {_truncate_text(str(doc.get('text', '')))}"
             )
+            if "retrieval_score" in doc and "reranker_score" in doc:
+                lines.append(
+                    f"   retrieval_score={doc['retrieval_score']:.4f}, "
+                    f"reranker_score={doc['reranker_score']:.4f}"
+                )
         lines.append("")
         lines.append("**Answer**:")
         lines.append("")
@@ -344,6 +514,18 @@ def _write_examples_report(
         lines.append("")
         cited = ", ".join(f"`{c}`" for c in item.get("citations_detected", []))
         lines.append(f"**Citations detected**: {cited if cited else '_none_'}")
+        supported = ", ".join(
+            f"`{c}`" for c in item.get("supported_citations_detected", [])
+        )
+        unsupported = ", ".join(
+            f"`{c}`" for c in item.get("unsupported_citations_detected", [])
+        )
+        lines.append(f"**Supported citations**: {supported if supported else '_none_'}")
+        lines.append(
+            f"**Unsupported citations**: {unsupported if unsupported else '_none_'}"
+        )
+        if "rerank_latency_ms" in item:
+            lines.append(f"**Rerank latency (ms)**: {item['rerank_latency_ms']:.2f}")
         lines.append("")
 
     report_path.write_text("\n".join(lines), encoding="utf-8")
@@ -354,6 +536,28 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def write_examples_report(
+    report_path: Path,
+    results: list[dict[str, Any]],
+    retriever_name: str,
+    llm_model_name: str,
+    top_k: int,
+) -> None:
+    """Persist a human-readable markdown report for generated examples."""
+    _write_examples_report(
+        report_path=report_path,
+        results=results,
+        retriever_name=retriever_name,
+        llm_model_name=llm_model_name,
+        top_k=top_k,
+    )
+
+
+def write_results_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    """Persist raw generation/evaluation rows as JSONL."""
+    _write_jsonl(path=path, rows=rows)
 
 
 def _load_queries(path: Path, limit: int | None = None) -> list[dict[str, Any]]:
@@ -391,6 +595,30 @@ def generate_from_cfg(
         index_path=str(cfg.generation.index),
     )
     docstore = _load_docstore(str(cfg.generation.corpus_path))
+    use_reranker = _as_bool(getattr(cfg.generation, "use_reranker", False))
+    retrieve_top_k = int(
+        getattr(cfg.generation, "retrieve_top_k", cfg.generation.top_k)
+    )
+    retrieve_top_k = max(retrieve_top_k, int(cfg.generation.top_k))
+
+    reranker = None
+    if use_reranker:
+        from medical_rag_reranker.inference.rerank import CrossEncoderBatchReranker
+
+        checkpoint_path = _as_optional_str(
+            getattr(cfg.generation, "reranker_checkpoint_path", None)
+        )
+        if checkpoint_path is None:
+            raise RuntimeError(
+                "generation.use_reranker=true requires "
+                "`generation.reranker_checkpoint_path`."
+            )
+
+        reranker = CrossEncoderBatchReranker.from_cfg(
+            cfg=cfg,
+            checkpoint_path=checkpoint_path,
+            batch_size=int(getattr(cfg.generation, "reranker_batch_size", 16)),
+        )
 
     llm = LocalGenerator(
         model_name=str(cfg.generation.llm_model_name),
@@ -398,6 +626,7 @@ def generate_from_cfg(
         do_sample=bool(cfg.generation.do_sample),
         temperature=float(cfg.generation.temperature),
         max_input_tokens=int(getattr(cfg.generation, "max_input_tokens", 1024)),
+        local_files_only=_as_bool(getattr(cfg.generation, "local_files_only", False)),
     )
 
     if question:
@@ -407,6 +636,8 @@ def generate_from_cfg(
             docstore=docstore,
             question=question,
             top_k=int(cfg.generation.top_k),
+            retrieve_top_k=retrieve_top_k,
+            reranker=reranker,
             query_id=None,
         )
 
@@ -436,12 +667,14 @@ def generate_from_cfg(
                 docstore=docstore,
                 question=qtext,
                 top_k=int(cfg.generation.top_k),
+                retrieve_top_k=retrieve_top_k,
+                reranker=reranker,
                 query_id=qid,
             )
         )
 
     report_file = Path(_as_optional_str(output_path) or str(cfg.generation.report_path))
-    _write_examples_report(
+    write_examples_report(
         report_path=report_file,
         results=results,
         retriever_name=str(cfg.retrieval.name),
@@ -453,6 +686,6 @@ def generate_from_cfg(
         getattr(cfg.generation, "results_jsonl_path", None)
     )
     if results_jsonl:
-        _write_jsonl(Path(results_jsonl), results)
+        write_results_jsonl(Path(results_jsonl), results)
 
     return results

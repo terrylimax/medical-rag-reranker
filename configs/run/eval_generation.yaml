@@ -1,0 +1,15 @@
+queries_path: ${run.prep_data.out_dir}/eval_queries.jsonl
+examples_limit: 20
+judge_mode: heuristic
+
+generation_report_path: reports/eval_generation_examples.md
+generation_results_jsonl_path: reports/eval_generation_raw.jsonl
+
+output_jsonl: reports/eval_generation.jsonl
+summary_json: reports/eval_generation.summary.json
+output_report: reports/eval_generation.md
+
+experiment: generation_eval
+run_name: ${retrieval.name}_generation
+mlflow_uri: null
+run_tag: null

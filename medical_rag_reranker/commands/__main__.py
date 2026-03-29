@@ -31,6 +31,8 @@ def main() -> None:
     - python -m medical_rag_reranker.commands prep_data
     - python -m medical_rag_reranker.commands index
     - python -m medical_rag_reranker.commands eval_retrieval
+    - python -m medical_rag_reranker.commands eval_generation
+    - python -m medical_rag_reranker.commands eval_reranked_retrieval
     - python -m medical_rag_reranker.commands rag_demo
     - python -m medical_rag_reranker.commands submit_job
     - python -m medical_rag_reranker.commands job_status
@@ -47,6 +49,8 @@ def main() -> None:
     - python -m medical_rag_reranker.commands prep_data
     - python -m medical_rag_reranker.commands index --overrides "retrieval=hybrid"
     - python -m medical_rag_reranker.commands eval_retrieval
+    - python -m medical_rag_reranker.commands eval_generation
+    - python -m medical_rag_reranker.commands eval_reranked_retrieval
     - python -m medical_rag_reranker.commands rag_demo --question "..."
     - python -m medical_rag_reranker.commands submit_job --question "..."
     - python -m medical_rag_reranker.commands job_status --job_id "..."
@@ -64,6 +68,8 @@ def main() -> None:
             "prep_data": cmd_prep_data,
             "index": cmd_index,
             "eval_retrieval": cmd_eval_retrieval,
+            "eval_generation": cmd_eval_generation,
+            "eval_reranked_retrieval": cmd_eval_reranked_retrieval,
             "rag_demo": cmd_rag_demo,
             "submit_job": cmd_submit_job,
             "job_status": cmd_job_status,
@@ -139,7 +145,7 @@ def cmd_generate(
     config_dir: Optional[str] = None,
     overrides: Optional[str] = None,
 ) -> dict | list[dict]:
-    """Run retrieval + generation baseline (without reranker)."""
+    """Run retrieval + generation with optional reranker stage."""
     from medical_rag_reranker.inference.generate import generate_from_cfg
 
     cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
@@ -329,21 +335,34 @@ def cmd_eval_retrieval(
     return metrics
 
 
-def _write_rag_demo_report(path: Path, results: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["# RAG Demo", ""]
-    for i, item in enumerate(results, start=1):
-        qid = item.get("query_id", f"demo-{i}")
-        lines.append(f"## Example {i} (`{qid}`)")
-        lines.append(f"Question: {item['question']}")
-        lines.append("")
-        lines.append("Answer:")
-        lines.append(str(item["answer"]))
-        lines.append("")
-        citations = ", ".join(f"`{c}`" for c in item.get("citations_detected", []))
-        lines.append(f"Citations: {citations if citations else '_none_'}")
-        lines.append("")
-    path.write_text("\n".join(lines), encoding="utf-8")
+def cmd_eval_generation(
+    config_dir: Optional[str] = None,
+    overrides: Optional[str] = None,
+) -> dict[str, float]:
+    """Evaluate generated RAG answers with reference-free heuristics."""
+    from medical_rag_reranker.commands.eval_generation import run_eval_generation
+
+    cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
+    ensure_data(cfg)
+    metrics = run_eval_generation(cfg)
+    print(json.dumps(metrics, ensure_ascii=False, indent=2))
+    return metrics
+
+
+def cmd_eval_reranked_retrieval(
+    config_dir: Optional[str] = None,
+    overrides: Optional[str] = None,
+) -> dict[str, float]:
+    """Compare baseline retrieval metrics before/after cross-encoder reranking."""
+    from medical_rag_reranker.commands.eval_reranked_retrieval import (
+        run_from_cfg as eval_reranked_retrieval_from_cfg,
+    )
+
+    cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
+    ensure_data(cfg)
+    metrics = eval_reranked_retrieval_from_cfg(cfg)
+    print(json.dumps(metrics, ensure_ascii=False, indent=2))
+    return metrics
 
 
 def cmd_rag_demo(
@@ -355,13 +374,18 @@ def cmd_rag_demo(
     overrides: Optional[str] = None,
 ) -> dict | list[dict]:
     """Run a quick end-to-end retrieval+generation demo (1..5 questions)."""
-    from medical_rag_reranker.inference.generate import generate_from_cfg
+    from medical_rag_reranker.inference.generate import (
+        generate_from_cfg,
+        write_examples_report,
+        write_results_jsonl,
+    )
 
     cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
     ensure_data(cfg)
 
     run_cfg = cfg.run.rag_demo
     report_path = Path(output_report or str(run_cfg.output_report))
+    results_jsonl_path = Path(str(run_cfg.output_jsonl))
 
     if question:
         result = generate_from_cfg(
@@ -370,10 +394,18 @@ def cmd_rag_demo(
             queries_path=None,
             output_path=None,
         )
-        _write_rag_demo_report(report_path, [result])
+        write_examples_report(
+            report_path=report_path,
+            results=[result],
+            retriever_name=str(cfg.retrieval.name),
+            llm_model_name=str(cfg.generation.llm_model_name),
+            top_k=int(cfg.generation.top_k),
+        )
+        write_results_jsonl(results_jsonl_path, [result])
         print(result["answer"])
         print(f"citations_detected={result.get('citations_detected', [])}")
         print(f"report={report_path}")
+        print(f"results_jsonl={results_jsonl_path}")
         return result
 
     n = int(num_questions if num_questions is not None else run_cfg.num_questions)
@@ -381,6 +413,7 @@ def cmd_rag_demo(
     cfg.generation.mode = "batch"
     cfg.generation.examples_limit = n
     cfg.generation.report_path = str(report_path)
+    cfg.generation.results_jsonl_path = str(results_jsonl_path)
 
     result = generate_from_cfg(
         cfg=cfg,
@@ -389,9 +422,9 @@ def cmd_rag_demo(
         output_path=str(report_path),
     )
     assert isinstance(result, list)
-    _write_rag_demo_report(report_path, result)
     print(f"Generated {len(result)} demo answers")
     print(f"report={report_path}")
+    print(f"results_jsonl={results_jsonl_path}")
     return result
 
 
