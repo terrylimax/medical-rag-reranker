@@ -337,6 +337,15 @@ poetry run python -m medical_rag_reranker.commands generate \
   --question "What is metformin used for?"
 ```
 
+If the model is already cached locally and you want to avoid any network access
+to the Hugging Face Hub, run:
+
+```bash
+poetry run python -m medical_rag_reranker.commands generate \
+  --question "What is metformin used for?" \
+  --overrides "generation.local_files_only=true"
+```
+
 Output:
 
 - generated answer
@@ -366,6 +375,68 @@ Notes:
 - Batch input JSONL should have `query_id` and either `text` or `question`.
 - Retrieval metrics (`Precision@k`, `Recall@k`, `NDCG@k`) remain the primary KPI.
 - Generation here is a quality/demo layer via curated examples.
+
+---
+
+## RAG With Reranker
+
+The generation pipeline can now optionally rerank retrieved candidates with the
+trained Cross-Encoder before building the final prompt.
+
+Example:
+
+```bash
+poetry run python -m medical_rag_reranker.commands generate \
+  --question "What is metformin used for?" \
+  --overrides "retrieval=bm25,generation.use_reranker=true,generation.reranker_checkpoint_path=/absolute/path/to/reranker.ckpt,generation.retrieve_top_k=20,generation.top_k=5,generation.local_files_only=true"
+```
+
+To compare retrieval quality before and after reranking on the same eval set:
+
+```bash
+poetry run python -m medical_rag_reranker.commands eval_reranked_retrieval \
+  --overrides "retrieval=bm25,retrieval_run.top_k=20,run.eval_reranked_retrieval.reranker_checkpoint_path=/absolute/path/to/reranker.ckpt"
+```
+
+This command writes a reranked `run.trec`, logs baseline/reranked metrics to
+MLflow, stores metric deltas such as `delta_NDCG@10`, and now also saves:
+
+- a markdown comparison report with top docs before/after reranking
+- a JSONL file with per-query comparison examples
+
+Example output artifacts:
+
+- `reports/bm25_reranked_comparison.md`
+- `reports/bm25_reranked_comparison.jsonl`
+
+The batch generation report now also includes:
+
+- top docs before rerank
+- top docs after rerank
+- detected citations
+- which citations were supported by retrieved docs vs invented by the model
+
+To evaluate generated answers end-to-end with reference-free heuristics:
+
+```bash
+poetry run python -m medical_rag_reranker.commands eval_generation \
+  --overrides "retrieval=bm25,generation.local_files_only=true"
+```
+
+This command writes:
+
+- `reports/eval_generation_examples.md` with raw generated examples
+- `reports/eval_generation.jsonl` with per-example scores
+- `reports/eval_generation.summary.json` with aggregated metrics
+- `reports/eval_generation.md` with a compact markdown summary
+
+The first implemented judge mode is `heuristic`, which logs:
+
+- `avg_context_relevance`
+- `avg_groundedness`
+- `avg_answer_relevance`
+- citation support / unsupported citation rates
+- retrieval / generation / end-to-end latency averages
 
 ---
 
@@ -972,17 +1043,35 @@ poetry run python -m medical_rag_reranker.commands retrieval_run --overrides "re
 poetry run python -m medical_rag_reranker.commands eval_retrieval --overrides "retrieval=hybrid"
 ```
 
-5. Run an end-to-end RAG demo (1 question by default, up to 5):
+5. Compare baseline retrieval vs reranked retrieval:
+
+```bash
+poetry run python -m medical_rag_reranker.commands eval_reranked_retrieval \
+  --overrides "retrieval=hybrid,retrieval_run.top_k=20,run.eval_reranked_retrieval.reranker_checkpoint_path=/absolute/path/to/reranker.ckpt"
+```
+
+6. Run an end-to-end RAG demo (1 question by default, up to 5):
 
 ```bash
 poetry run python -m medical_rag_reranker.commands rag_demo
 poetry run python -m medical_rag_reranker.commands rag_demo --overrides "run.rag_demo.num_questions=5"
+poetry run python -m medical_rag_reranker.commands rag_demo --overrides "retrieval=hybrid,generation.use_reranker=true,generation.reranker_checkpoint_path=/absolute/path/to/reranker.ckpt,run.rag_demo.num_questions=3"
 ```
 
 Notes:
 
 - `medical_rag_reranker/retrieval/` and `configs/retrieval/` are already present in this repository.
 - A separate `medical_rag_reranker/evaluation/` package is not required for this baseline step.
+- `rag_demo` writes a detailed markdown report to `reports/rag_demo.md` and a JSONL dump to `reports/rag_demo.jsonl`.
+
+### Tests
+
+Install dev dependencies and run the lightweight regression suite:
+
+```bash
+poetry install --with dev
+poetry run pytest
+```
 
 ---
 
