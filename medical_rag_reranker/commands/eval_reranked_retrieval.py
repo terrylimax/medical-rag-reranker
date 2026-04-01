@@ -21,6 +21,7 @@ from medical_rag_reranker.inference.rerank import (
 
 
 def _as_optional_str(value: object) -> str | None:
+    """Normalize optional config-like values to either a trimmed string or None."""
     if value is None:
         return None
     text = str(value).strip()
@@ -30,6 +31,7 @@ def _as_optional_str(value: object) -> str | None:
 
 
 def _parse_ks(ks: str) -> list[int]:
+    """Parse a comma-separated list of evaluation cutoffs such as `5,10`."""
     values = [int(x.strip()) for x in str(ks).split(",") if x.strip()]
     if not values:
         raise ValueError("ks is empty")
@@ -37,6 +39,7 @@ def _parse_ks(ks: str) -> list[int]:
 
 
 def _resolve_query_text(row: dict[str, Any]) -> str:
+    """Extract the query text from a JSONL row using supported field names."""
     text = row.get("text")
     if text:
         return str(text)
@@ -49,6 +52,7 @@ def _resolve_query_text(row: dict[str, Any]) -> str:
 
 
 def _resolve_query_id(row: dict[str, Any], fallback_idx: int) -> str:
+    """Extract a stable query identifier from a JSONL row or synthesize one."""
     qid = row.get("query_id")
     if qid is None:
         qid = row.get("question_id")
@@ -58,6 +62,7 @@ def _resolve_query_id(row: dict[str, Any], fallback_idx: int) -> str:
 
 
 def _load_queries(path: Path) -> dict[str, str]:
+    """Load evaluation queries from JSONL into a `query_id -> query_text` mapping."""
     queries: dict[str, str] = {}
     with path.open("r", encoding="utf-8") as f:
         for idx, line in enumerate(f, start=1):
@@ -69,6 +74,7 @@ def _load_queries(path: Path) -> dict[str, str]:
 
 
 def _load_docstore(path: Path) -> dict[str, dict[str, Any]]:
+    """Load the corpus JSONL into a `doc_id -> document payload` mapping."""
     docstore: dict[str, dict[str, Any]] = {}
     with path.open("r", encoding="utf-8") as f:
         for line in f:
@@ -82,6 +88,7 @@ def _load_docstore(path: Path) -> dict[str, dict[str, Any]]:
 
 
 def _truncate_text(text: str, max_chars: int = 220) -> str:
+    """Collapse whitespace and shorten long text for human-readable reports."""
     clean = " ".join(text.split())
     if len(clean) <= max_chars:
         return clean
@@ -93,6 +100,7 @@ def _write_run_trec(
     results: dict[str, list[tuple[str, float]]],
     run_name: str,
 ) -> None:
+    """Write ranked results to a TREC run file for downstream evaluation."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         for qid, docs in results.items():
@@ -101,6 +109,7 @@ def _write_run_trec(
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    """Write a list of dictionaries to JSONL, one serialized row per line."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         for row in rows:
@@ -115,6 +124,7 @@ def _serialize_ranked_doc(
     retrieval_score: float | None = None,
     reranker_score: float | None = None,
 ) -> dict[str, Any]:
+    """Build a report-friendly document record from ranked output and corpus data."""
     doc = docstore.get(doc_id, {})
     row: dict[str, Any] = {
         "doc_id": doc_id,
@@ -133,6 +143,7 @@ def _first_relevant_rank(
     ranked_doc_ids: list[str],
     relevant_doc_ids: set[str],
 ) -> int | None:
+    """Return the 1-based rank of the first relevant document, if any."""
     for idx, doc_id in enumerate(ranked_doc_ids, start=1):
         if doc_id in relevant_doc_ids:
             return idx
@@ -140,6 +151,7 @@ def _first_relevant_rank(
 
 
 def _rank_value(rank: int | None) -> int:
+    """Convert a possibly missing rank into a sortable numeric sentinel value."""
     return rank if rank is not None else 10**9
 
 
@@ -153,6 +165,7 @@ def _build_comparison_examples(
     examples_limit: int,
     top_docs_to_report: int,
 ) -> list[dict[str, Any]]:
+    """Assemble per-query before/after rerank examples for reports and JSONL output."""
     rows: list[dict[str, Any]] = []
     for qid, query_text in queries.items():
         baseline_scores = baseline_run.get(qid)
@@ -238,6 +251,7 @@ def _write_comparison_report(
     comparison: dict[str, float],
     examples: list[dict[str, Any]],
 ) -> None:
+    """Render a markdown summary of metric deltas and representative rerank examples."""
     path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = [
         "# Retrieval Rerank Comparison",
@@ -322,6 +336,7 @@ def build_reranked_run(
     reranker: CrossEncoderBatchReranker,
     rerank_top_n: int,
 ) -> tuple[dict[str, dict[str, float]], dict[str, float]]:
+    """Rerank each query's top candidates and collect aggregate latency statistics."""
     reranked_run: dict[str, dict[str, float]] = {}
     total_latency_ms = 0.0
     reranked_queries = 0
@@ -376,6 +391,7 @@ def build_reranked_run(
 
 
 def run_from_cfg(cfg: DictConfig) -> Dict[str, float]:
+    """Execute the full reranked-retrieval evaluation workflow from Hydra config."""
     run_cfg = cfg.run.eval_reranked_retrieval
     baseline_run_path_text = _as_optional_str(run_cfg.run_path)
 
