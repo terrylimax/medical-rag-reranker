@@ -1,64 +1,110 @@
-# Training a Reranker for a Medical RAG System
+# Medical RAG Pipeline: Retrieval, Reranking, Generation, and Evaluation
 
-This project implements training code for a neural reranker (Cross-Encoder) used in a medical Retrieval-Augmented Generation (RAG) system.
-The reranker scores the relevance of a (query, document) pair and is used to reorder candidate documents retrieved by a classical retriever before answer generation.
+This repository is no longer only training code for a Cross-Encoder reranker.
+It now contains an end-to-end medical RAG baseline with:
 
-## Project Overview
+- data preparation for retrieval experiments
+- BM25 / dense / hybrid retrieval
+- optional Cross-Encoder reranking
+- answer generation with local `transformers` models
+- retrieval evaluation with `P@k`, `R@k`, `NDCG@k`
+- reference-free generation evaluation
+- MLflow tracking for training and evaluation runs
+- async job API and deployment skeletons via Docker Compose and Kubernetes
 
-**Goal:**
-Develop and train a neural reranker for a medical question-answering RAG system that can be used by both clinicians and patients.
+## Project Scope
 
-**For patients:**
+The thesis topic is a medical RAG system with hybrid retrieval and graph-aware extensions.
+The current repository already covers the reproducible baseline and most of the evaluation harness:
 
-- Improve awareness and understanding of diseases, medications, and their indications.
+- reproducible retrieval corpus / queries / qrels preparation
+- baseline `retriever -> generation`
+- `retriever -> reranker -> generation` path, provided a trained reranker checkpoint exists
+- retrieval-only comparison before and after reranking
+- reference-free answer evaluation for end-to-end RAG runs
 
-**For clinicians:**
+What is still future work rather than fully closed functionality:
 
-- Reduce information retrieval time.
-- Decrease diagnostic errors.
-- Assist in identifying rare conditions.
+- training and validating a final thesis-grade reranker checkpoint
+- GraphRAG / graph-structured knowledge integration
+- richer judge backends beyond the current heuristic reference-free scorer
+- production-grade monitoring and scheduling layers such as Prometheus/Grafana or Airflow
 
-**Core idea:**
-A Cross-Encoder model takes a `(Query, Document)` pair as input and outputs a relevance score in `[0, 1]`.
-This score is used to rank retrieved documents inside the RAG pipeline.
+## Current Functional Status
 
----
+Implemented now:
 
-## Quickstart for Reviewers (Checklist)
+- `train`: Cross-Encoder reranker training
+- `infer`: single `(query, document)` relevance scoring
+- `prep_data`: build `qa.jsonl`, `corpus.jsonl`, `splits.json`, `eval_queries.jsonl`, `qrels.tsv`
+- `index`: build retrieval indices for `bm25`, `dense`, or `hybrid`
+- `retrieval_run`: generate a TREC run file
+- `eval_retrieval`: compute retrieval metrics and log them to MLflow
+- `generate`: run baseline or reranked RAG generation with citations
+- `eval_generation`: compute reference-free answer metrics and log them to MLflow
+- `eval_reranked_retrieval`: compare retrieval quality before and after reranking
+- `rag_demo`: run a compact end-to-end demo and save markdown / JSONL reports
+- `submit_job`, `job_status`, `job_result`, `serve_jobs_api`: async-ready inference API flow
 
-The project is set up so a reviewer can validate it end-to-end with the steps below.
+## Minimal VKR Demo Path
+
+The shortest reproducible path for thesis demonstration is:
+
+1. Prepare retrieval artifacts
+2. Build an index
+3. Evaluate retrieval quality
+4. Generate answers on top of retrieval
+5. Evaluate generated answers
+6. Optionally compare baseline retrieval with reranked retrieval
+
+Commands:
+
+```bash
+poetry run python -m medical_rag_reranker.commands prep_data --overrides 'data.use_dvc=false'
+poetry run python -m medical_rag_reranker.commands index --overrides 'data.use_dvc=false,retrieval=bm25'
+poetry run python -m medical_rag_reranker.commands eval_retrieval --overrides 'data.use_dvc=false,retrieval=bm25'
+poetry run python -m medical_rag_reranker.commands generate --question "What is metformin used for?" --overrides 'data.use_dvc=false,retrieval=bm25,generation.local_files_only=true'
+poetry run python -m medical_rag_reranker.commands eval_generation --overrides 'data.use_dvc=false,retrieval=bm25,generation.local_files_only=true'
+```
+
+If you already have a trained reranker checkpoint:
+
+```bash
+poetry run python -m medical_rag_reranker.commands eval_reranked_retrieval \
+  --overrides "data.use_dvc=false,retrieval=bm25,retrieval_run.top_k=20,run.eval_reranked_retrieval.reranker_checkpoint_path=/absolute/path/to/reranker.ckpt"
+```
+
+A focused thesis-oriented walkthrough is available in `docs/vkr_demo.md`.
+
+## Quickstart
 
 1. Clone the repository
    ```bash
    git clone https://github.com/terrylimax/medical-rag-reranker.git
    cd medical-rag-reranker
    ```
-2. Create a clean environment and install dependencies
+2. Install dependencies
    ```bash
    poetry install
    ```
-3. Install git hooks
+3. Install hooks
    ```bash
    poetry run pre-commit install
    ```
-4. Run all checks
+4. Run quality checks
    ```bash
    poetry run pre-commit run -a
    ```
-5. (Optional) Start MLflow UI locally
+5. Run tests
    ```bash
-   poetry run mlflow ui --host 127.0.0.1 --port 8080
+   poetry install --with dev
+   poetry run pytest
    ```
-6. Run training
-   ```bash
-   poetry run python -m medical_rag_reranker.commands train
-   ```
-
-Expected result: the training run finishes successfully and `train/loss` decreases over time.
 
 ## Reviewer Shortcut: Kubernetes Iteration
 
-If you are validating the Kubernetes assignment, the fastest path is:
+If you are validating the Kubernetes assignment rather than the thesis RAG pipeline,
+the fastest path is:
 
 ```bash
 minikube start
@@ -151,20 +197,22 @@ medical-rag-reranker/
 │   └── train/
 │       └── train.yaml
 ├── medical_rag_reranker/
-│   ├── commands.py            # CLI entry point
-│   ├── data/
-│   │   ├── download.py        # data downloading logic
-│   │   └── datamodule.py      # PyTorch Lightning DataModule
-│   ├── models/
-│   │   └── reranker_module.py # LightningModule
-│   ├── training/
-│   │   └── train.py            # train_from_cfg(cfg)
-│   └── utils/
-│       ├── git.py
+│   ├── commands/             # Fire CLI package (`python -m medical_rag_reranker.commands`)
+│   ├── data/                 # data download, DVC helpers, dataset preparation
+│   ├── retrieval/            # bm25 / dense / hybrid retrievers
+│   ├── inference/            # infer, generate, rerank
+│   ├── evaluation/           # reference-free generation evaluation helpers
+│   ├── jobs/                 # async job service, storage, HTTP API
+│   ├── models/              # Lightning reranker module
+│   ├── training/            # training entrypoints
+│   └── utils/               # config / git / shared helpers
+├── configs/                  # Hydra configs for train/run/retrieval/jobs
+├── tests/                    # lightweight regression tests
+├── docker/                   # nginx/static support images and configs
+├── k8s/                      # Kubernetes manifests
 ├── pyproject.toml
 ├── README.md
-├── .pre-commit-config.yaml
-└── .gitignore
+└── docs/vkr_demo.md
 ```
 
 ---
@@ -208,8 +256,8 @@ One-time setup (already configured in this repo):
 
 Runtime behavior:
 
-- `train` and `infer` first try to fetch data via DVC (pull).
-- If DVC pull fails (e.g., first run), the code falls back to downloading from open sources and then adds/pushes the data to the local DVC remote.
+- CLI commands that depend on managed artifacts call `ensure_data()` first, including `train`, `infer`, `prep_data`, `index`, `retrieval_run`, `generate`, `eval_retrieval`, `eval_generation`, `eval_reranked_retrieval`, and `rag_demo`.
+- If DVC pull fails or DVC is disabled, the code falls back to downloading or building the required local artifacts.
 
 ---
 
@@ -304,7 +352,7 @@ poetry run mlflow ui --host 127.0.0.1 --port 8080
 ## Notes
 
 - The model is designed as a reusable component of a larger RAG system.
-- Deployment (inference API, Docker, orchestration) is considered but out of scope for this training task.
+- The repository already includes inference, evaluation, async job handling, Docker Compose, and Kubernetes manifests.
 - No trained models or datasets are committed to the repository.
 
 ---
@@ -984,13 +1032,8 @@ It computes mean Precision@k / Recall@k / NDCG@k and logs results to MLflow.
 ### Scenario A: You already have a run file (`.trec`)
 
 ```bash
-poetry run python -m medical_rag_reranker.commands.eval_retrieval \
-   --eval_queries data/eval_queries.jsonl \
-   --qrels data/qrels.tsv \
-   --run_path runs/bm25.run.trec \
-   --experiment retrieval_eval \
-   --retriever bm25 \
-   --top_k 100
+poetry run python -m medical_rag_reranker.commands eval_retrieval \
+  --overrides "run.eval_retrieval.run_path=runs/bm25.run.trec,run.eval_retrieval.retriever=bm25,run.eval_retrieval.top_k=100"
 ```
 
 ### Scenario B: Generate the run by calling an external retriever
@@ -999,13 +1042,8 @@ Your retriever command must accept `--queries` and `--out` and write a TREC run 
 Pass a command template to `--retrieve_cmd` with placeholders `{queries}` and `{out_run}`.
 
 ```bash
-poetry run python -m medical_rag_reranker.commands.eval_retrieval \
-   --eval_queries data/eval_queries.jsonl \
-   --qrels data/qrels.tsv \
-   --retrieve_cmd "python -m medical_rag_reranker.commands.retrieval_run --retriever bm25 --index artifacts/bm25_index.json.gz --queries {queries} --out {out_run}" \
-   --experiment retrieval_eval \
-   --retriever bm25 \
-   --top_k 100
+poetry run python -m medical_rag_reranker.commands eval_retrieval \
+  --overrides "run.eval_retrieval.retrieve_cmd=python -m medical_rag_reranker.commands.retrieval_run --retriever bm25 --index artifacts/bm25_index.json.gz --queries {queries} --out {out_run},run.eval_retrieval.retriever=bm25,run.eval_retrieval.top_k=100"
 ```
 
 Notes:
