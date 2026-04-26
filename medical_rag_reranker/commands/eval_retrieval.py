@@ -32,6 +32,11 @@ def _parse_ks(ks: str | List[int]) -> List[int]:
     return values
 
 
+def _metric_name_for_mlflow(name: str) -> str:
+    """Convert human-readable retrieval metric names to MLflow-safe keys."""
+    return str(name).replace("@", "_at_")
+
+
 def read_qrels_tsv(path: Path) -> Dict[str, Dict[str, int]]:
     """Parse qrels in TREC format: qid <iter> docid rel."""
     qrels: Dict[str, Dict[str, int]] = {}
@@ -184,7 +189,7 @@ def run_eval(
         mlflow.log_params({k: v for k, v in params.items() if v is not None})
 
         for k, v in metrics.items():
-            mlflow.log_metric(k, float(v))
+            mlflow.log_metric(_metric_name_for_mlflow(k), float(v))
 
         mlflow.log_artifact(str(effective_run_path))
         mlflow.log_artifact(str(out_metrics))

@@ -42,12 +42,33 @@ def minmax(scores: np.ndarray, mask: Optional[np.ndarray] = None) -> np.ndarray:
 class HybridRetriever(Retriever):
     bm25: Retriever
     dense: Retriever
+    fusion: str = "score"
     alpha: float = 0.5
     cand_k: int = 50  # candidates per retriever
+    rrf_k: int = 60
 
     def retrieve(self, query: str, top_k: int) -> List[ScoredDoc]:
         a = self.bm25.retrieve(query, self.cand_k)
         b = self.dense.retrieve(query, self.cand_k)
+
+        if str(self.fusion).strip().lower() == "rrf":
+            scores: dict[str, float] = {}
+            for ranked_docs in (a, b):
+                for rank, doc in enumerate(ranked_docs, start=1):
+                    scores[doc.doc_id] = scores.get(doc.doc_id, 0.0) + (
+                        1.0 / (float(self.rrf_k) + float(rank))
+                    )
+
+            ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)[
+                :top_k
+            ]
+            return [ScoredDoc(doc_id, float(score)) for doc_id, score in ranked]
+
+        if str(self.fusion).strip().lower() != "score":
+            raise ValueError(
+                f"Unsupported hybrid fusion mode: {self.fusion!r}. "
+                "Expected `score` or `rrf`."
+            )
 
         # merge by doc_id
         all_ids = list({d.doc_id for d in a} | {d.doc_id for d in b})

@@ -1,5 +1,16 @@
 corpus: ${run.prep_data.out_dir}/corpus.jsonl
 out: ${paths.artifacts_dir}/${retrieval.index_file}
 model: sentence-transformers/all-MiniLM-L6-v2
+query_model: ncbi/MedCPT-Query-Encoder
+doc_model: ncbi/MedCPT-Article-Encoder
+dense_backend: dense
+pooling: cls
+normalize: true
+query_max_length: 64
+doc_max_length: 256
+batch_size: 32
+local_files_only: false
+fusion: ${retrieval.fusion}
 alpha: 0.5
 cand_k: 50
+rrf_k: ${retrieval.rrf_k}

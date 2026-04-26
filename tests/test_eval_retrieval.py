@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from medical_rag_reranker.commands.eval_retrieval import read_qrels_tsv, read_run_trec
+from medical_rag_reranker.commands.eval_retrieval import (
+    _metric_name_for_mlflow,
+    read_qrels_tsv,
+    read_run_trec,
+)
 
 
 def test_trec_parsers_read_qrels_and_run_files(tmp_path: Path) -> None:
@@ -15,3 +19,8 @@ def test_trec_parsers_read_qrels_and_run_files(tmp_path: Path) -> None:
 
     assert qrels == {"q1": {"d1": 1, "d2": 0}}
     assert run == {"q1": {"d1": 2.0, "d2": 1.0}}
+
+
+def test_metric_name_for_mlflow_rewrites_at_sign() -> None:
+    assert _metric_name_for_mlflow("P@5") == "P_at_5"
+    assert _metric_name_for_mlflow("NDCG@10") == "NDCG_at_10"

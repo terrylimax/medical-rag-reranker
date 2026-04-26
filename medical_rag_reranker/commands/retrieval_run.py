@@ -107,12 +107,11 @@ def _load_hybrid_from_manifest(manifest_path: Path):
     and `cand_k`.
     """
     try:
-        from medical_rag_reranker.retrieval.dense import DenseRetriever
         from medical_rag_reranker.retrieval.hybrid import HybridRetriever
     except Exception as e:
         raise RuntimeError(
-            "Hybrid retriever requires `sentence-transformers`. "
-            "Install dependencies or switch to retrieval=bm25."
+            "Hybrid retriever dependencies are missing. "
+            "Install retrieval dependencies or switch to retrieval=bm25."
         ) from e
 
     with open(manifest_path, "r", encoding="utf-8") as f:
@@ -132,13 +131,25 @@ def _load_hybrid_from_manifest(manifest_path: Path):
         dense_index = base_dir / dense_index
 
     bm25 = BM25Retriever.load(str(bm25_index))
-    dense = DenseRetriever.load(str(dense_index))
+    dense_backend = str(m.get("dense_backend", "dense"))
+    if dense_backend == "bi_encoder":
+        from medical_rag_reranker.retrieval.bi_encoder import BiEncoderRetriever
+
+        dense = BiEncoderRetriever.load(str(dense_index))
+    elif dense_backend == "dense":
+        from medical_rag_reranker.retrieval.dense import DenseRetriever
+
+        dense = DenseRetriever.load(str(dense_index))
+    else:
+        raise ValueError(f"Unsupported hybrid dense_backend: {dense_backend!r}")
 
     return HybridRetriever(
         bm25=bm25,
         dense=dense,
+        fusion=str(m.get("fusion", "score")),
         alpha=float(m.get("alpha", 0.5)),
         cand_k=int(m.get("cand_k", 50)),
+        rrf_k=int(m.get("rrf_k", 60)),
     )
 
 
@@ -154,6 +165,10 @@ def _load_retriever(retriever_name: str, index_path: str):
                 "Install dependencies or switch to retrieval=bm25."
             ) from e
         return DenseRetriever.load(index_path)
+    if retriever_name == "bi_encoder":
+        from medical_rag_reranker.retrieval.bi_encoder import BiEncoderRetriever
+
+        return BiEncoderRetriever.load(index_path)
     if retriever_name == "hybrid":
         manifest_path = _resolve_manifest_path(index_path)
         return _load_hybrid_from_manifest(manifest_path)
@@ -226,7 +241,9 @@ def main():
             "  python -m medical_rag_reranker.commands.retrieval_run \\\n+  --retriever hybrid \\\n+  --index artifacts/hybrid/hybrid_index.json \\\n+  --queries data/eval_queries.jsonl \\\n+  --out runs/hybrid.trec\n"
         ),
     )
-    p.add_argument("--retriever", choices=["bm25", "dense", "hybrid"], required=True)
+    p.add_argument(
+        "--retriever", choices=["bm25", "dense", "bi_encoder", "hybrid"], required=True
+    )
     p.add_argument(
         "--index",
         required=True,
