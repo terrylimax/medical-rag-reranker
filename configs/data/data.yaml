@@ -1,5 +1,7 @@
 # Data-related settings
 raw_dir: data/raw
+processed_dir: ${paths.data_dir}/processed
+prefer_prepared_artifacts: true
 
 # DVC settings
 use_dvc: true

@@ -18,6 +18,8 @@ defaults:
   - generation: generation
   - run@run.prep_data: prep_data
   - run@run.retrieval_index: retrieval_index
+  - run@run.retriever_training_data: retriever_training_data
+  - run@run.train_retriever: train_retriever
   - run@run.eval_retrieval: eval_retrieval
   - run@run.eval_generation: eval_generation
   - run@run.eval_reranked_retrieval: eval_reranked_retrieval
