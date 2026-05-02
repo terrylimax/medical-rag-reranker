@@ -1,0 +1,8 @@
+name: rag_fusion_medcpt_pilot
+index_file: medcpt_pilot_index.pkl
+base_retriever: bi_encoder
+num_queries: 5
+cand_k: 50
+rrf_k: 60
+include_original: true
+fusion: rrf

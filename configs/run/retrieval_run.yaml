@@ -1,5 +1,5 @@
 queries: ${run.prep_data.out_dir}/eval_queries.jsonl
 out: ${paths.runs_dir}/${retrieval.name}.trec
-top_k: 10
+top_k: 50
 run_name: ${retrieval.name}
 index: ${paths.artifacts_dir}/${retrieval.index_file}

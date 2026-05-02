@@ -5,13 +5,17 @@ import random
 from pathlib import Path
 from typing import Any
 
+from medical_rag_reranker.data.metadata import extract_medical_metadata
 from medical_rag_reranker.retrieval.bm25 import BM25Retriever
+from medical_rag_reranker.utils.progress import count_text_lines, progress, timed_stage
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    total = count_text_lines(path)
     with path.open("r", encoding="utf-8") as f:
-        for line in f:
+        iterable = progress(f, desc=f"Reading {path.name}", total=total, unit="row")
+        for line in iterable:
             if line.strip():
                 rows.append(json.loads(line))
     return rows
@@ -20,7 +24,10 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
-        for row in rows:
+        iterable = progress(
+            rows, desc=f"Writing {path.name}", total=len(rows), unit="row"
+        )
+        for row in iterable:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
@@ -163,7 +170,13 @@ def _build_split_rows(
     skipped_empty = 0
     total_negatives = 0
 
-    for qid in split_ids:
+    iterable = progress(
+        split_ids,
+        desc=f"Building {split_name} retriever triples",
+        total=len(split_ids),
+        unit="query",
+    )
+    for qid in iterable:
         qa_row = qa_by_qid.get(qid)
         gold_doc = corpus_by_qid.get(qid)
         if qa_row is None or gold_doc is None:
@@ -176,6 +189,8 @@ def _build_split_rows(
         if not query or not gold_doc_id or not positive_text:
             skipped_empty += 1
             continue
+
+        metadata = extract_medical_metadata(qa_row)
 
         negative_doc_ids = _select_negatives(
             query=query,
@@ -208,6 +223,12 @@ def _build_split_rows(
                 "negative_doc_ids": negative_doc_ids,
                 "negative_texts": negative_texts,
                 "split": split_name,
+                "group_id": qa_row.get("group_id") or metadata["group_id"],
+                "question_intent": qa_row.get("question_intent")
+                or metadata["question_intent"],
+                "diagnosis_or_topic": qa_row.get("diagnosis_or_topic")
+                or metadata["diagnosis_or_topic"],
+                "source": qa_row.get("source") or metadata["source"],
             }
         )
 
@@ -255,9 +276,11 @@ def build_retriever_training_data(
             "Prepared retrieval artifacts are missing: " + ", ".join(missing)
         )
 
-    qa_rows = read_jsonl(qa_path)
-    corpus_rows = read_jsonl(corpus_path)
-    splits = json.loads(splits_path.read_text(encoding="utf-8"))
+    with timed_stage("Build retriever training data"):
+        qa_rows = read_jsonl(qa_path)
+        corpus_rows = read_jsonl(corpus_path)
+        splits = json.loads(splits_path.read_text(encoding="utf-8"))
+        print(f"Loaded splits from: {splits_path}")
     qa_by_qid, corpus_by_qid, docstore = _build_maps(qa_rows, corpus_rows)
 
     train_ids = [str(qid) for qid in splits.get(train_split, [])]

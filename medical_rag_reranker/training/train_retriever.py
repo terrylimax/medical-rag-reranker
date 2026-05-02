@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader, Dataset
 from transformers import AutoModel, AutoTokenizer
 
 from medical_rag_reranker.retrieval.bi_encoder import _pool_embeddings
+from medical_rag_reranker.utils.progress import count_text_lines, progress, timed_stage
 
 
 class RetrieverTrainingDataset(Dataset):
@@ -27,8 +28,15 @@ class RetrieverTrainingDataset(Dataset):
     @staticmethod
     def _read_rows(path: Path) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
+        total = count_text_lines(path)
         with path.open("r", encoding="utf-8") as f:
-            for line in f:
+            iterable = progress(
+                f,
+                desc=f"Reading {path.name}",
+                total=total,
+                unit="row",
+            )
+            for line in iterable:
                 if not line.strip():
                     continue
                 row = json.loads(line)
@@ -190,7 +198,13 @@ def _run_train_epoch(
     total_loss = 0.0
     total_examples = 0
 
-    for step, rows in enumerate(loader, start=1):
+    batches = progress(
+        loader,
+        desc=f"Retriever train epoch {epoch}",
+        total=len(loader),
+        unit="batch",
+    )
+    for step, rows in enumerate(batches, start=1):
         optimizer.zero_grad(set_to_none=True)
         loss = _contrastive_step(
             rows=rows,
@@ -219,6 +233,9 @@ def _run_train_epoch(
         if int(log_every_n_steps) > 0 and step % int(log_every_n_steps) == 0:
             avg = total_loss / max(1, total_examples)
             print(f"epoch={epoch} step={step} train_loss={avg:.6f}")
+        if hasattr(batches, "set_postfix"):
+            avg = total_loss / max(1, total_examples)
+            batches.set_postfix(train_loss=f"{avg:.4f}")
 
     return total_loss / max(1, total_examples)
 
@@ -245,7 +262,10 @@ def _run_eval_epoch(
     doc_model.eval()
     total_loss = 0.0
     total_examples = 0
-    for rows in loader:
+    batches = progress(
+        loader, desc="Retriever validation", total=len(loader), unit="batch"
+    )
+    for rows in batches:
         loss = _contrastive_step(
             rows=rows,
             query_tokenizer=query_tokenizer,
@@ -262,6 +282,9 @@ def _run_eval_epoch(
         batch_size = len(rows)
         total_loss += float(loss.detach().cpu()) * batch_size
         total_examples += batch_size
+        if hasattr(batches, "set_postfix"):
+            avg = total_loss / max(1, total_examples)
+            batches.set_postfix(val_loss=f"{avg:.4f}")
 
     return total_loss / max(1, total_examples)
 
@@ -321,22 +344,23 @@ def train_retriever(
         else None
     )
 
-    query_tokenizer = AutoTokenizer.from_pretrained(
-        query_model_name,
-        local_files_only=local_files_only,
-    )
-    doc_tokenizer = AutoTokenizer.from_pretrained(
-        doc_model_name,
-        local_files_only=local_files_only,
-    )
-    query_model = AutoModel.from_pretrained(
-        query_model_name,
-        local_files_only=local_files_only,
-    ).to(resolved_device)
-    doc_model = AutoModel.from_pretrained(
-        doc_model_name,
-        local_files_only=local_files_only,
-    ).to(resolved_device)
+    with timed_stage("Load retriever encoders"):
+        query_tokenizer = AutoTokenizer.from_pretrained(
+            query_model_name,
+            local_files_only=local_files_only,
+        )
+        doc_tokenizer = AutoTokenizer.from_pretrained(
+            doc_model_name,
+            local_files_only=local_files_only,
+        )
+        query_model = AutoModel.from_pretrained(
+            query_model_name,
+            local_files_only=local_files_only,
+        ).to(resolved_device)
+        doc_model = AutoModel.from_pretrained(
+            doc_model_name,
+            local_files_only=local_files_only,
+        ).to(resolved_device)
 
     optimizer = torch.optim.AdamW(
         list(query_model.parameters()) + list(doc_model.parameters()),

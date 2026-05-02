@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import shlex
 import subprocess
 from pathlib import Path
@@ -11,6 +12,8 @@ from typing import Dict, List
 
 import mlflow
 from omegaconf import DictConfig
+
+from medical_rag_reranker.utils.progress import path_size_bytes, progress
 
 
 def _as_optional_str(value: object) -> str | None:
@@ -29,6 +32,8 @@ def _parse_ks(ks: str | List[int]) -> List[int]:
         values = [int(x.strip()) for x in str(ks).split(",") if x.strip()]
     if not values:
         raise ValueError("ks is empty")
+    if any(v <= 0 for v in values):
+        raise ValueError("ks must contain positive integers")
     return values
 
 
@@ -69,46 +74,131 @@ def read_run_trec(path: Path) -> Dict[str, Dict[str, float]]:
     return run
 
 
+def _ranked_doc_ids(scores: Dict[str, float]) -> list[str]:
+    return [
+        doc_id
+        for doc_id, _score in sorted(
+            scores.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+    ]
+
+
+def _dcg(relevances: list[int]) -> float:
+    return sum(
+        ((2.0 ** float(rel) - 1.0) / math.log2(idx + 2.0))
+        for idx, rel in enumerate(relevances)
+    )
+
+
+def _percentile(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(float(v) for v in values)
+    if len(ordered) == 1:
+        return ordered[0]
+    pos = (len(ordered) - 1) * float(q)
+    low = int(math.floor(pos))
+    high = int(math.ceil(pos))
+    if low == high:
+        return ordered[low]
+    weight = pos - low
+    return ordered[low] * (1.0 - weight) + ordered[high] * weight
+
+
+def _load_latency_metrics(run_path: Path) -> dict[str, float]:
+    latency_path = run_path.with_suffix(run_path.suffix + ".latency.json")
+    if not latency_path.exists():
+        return {}
+    payload = json.loads(latency_path.read_text(encoding="utf-8"))
+    latencies = [float(v) for v in payload.get("latencies_ms", [])]
+    if not latencies:
+        return {}
+    return {
+        "latency_p50_ms": _percentile(latencies, 0.50),
+        "latency_p95_ms": _percentile(latencies, 0.95),
+        "latency_mean_ms": sum(latencies) / len(latencies),
+        "num_latency_queries": float(len(latencies)),
+    }
+
+
+def _index_size_mb(index_path: Path | None) -> float | None:
+    if index_path is None or not index_path.exists():
+        return None
+
+    paths = [index_path]
+    if index_path.is_file() and index_path.suffix == ".json":
+        try:
+            manifest = json.loads(index_path.read_text(encoding="utf-8"))
+        except Exception:
+            manifest = {}
+        if manifest.get("format") == "medical-rag-reranker.hybrid-index":
+            for key in ("bm25_index", "dense_index"):
+                value = manifest.get(key)
+                if not value:
+                    continue
+                component = Path(str(value))
+                if not component.is_absolute():
+                    component = index_path.parent / component
+                paths.append(component)
+
+    total_bytes = sum(path_size_bytes(path) for path in paths)
+    return total_bytes / (1024.0 * 1024.0)
+
+
 def evaluate_with_pytrec_eval(
     qrels: Dict[str, Dict[str, int]],
     run: Dict[str, Dict[str, float]],
     ks: List[int],
 ) -> Dict[str, float]:
-    """Compute mean P@k / R@k / NDCG@k over evaluated queries."""
-    try:
-        import pytrec_eval
-    except ImportError as e:  # pragma: no cover - depends on local env
-        raise RuntimeError(
-            "pytrec_eval is not installed. Add it to your env/poetry deps."
-        ) from e
+    """Compute mean P/R/NDCG/Hit/MRR over qrels queries.
 
-    measures = set()
-    for k in ks:
-        measures.add(f"P_{k}")
-        measures.add(f"recall_{k}")
-        measures.add(f"ndcg_cut_{k}")
+    The implementation is kept local so product metrics do not depend on the
+    exact measure names supported by a pytrec_eval build.
+    """
+    if not qrels:
+        raise RuntimeError("No queries were evaluated (empty qrels).")
 
-    evaluator = pytrec_eval.RelevanceEvaluator(qrels, measures)
-    per_query = evaluator.evaluate(run)
-    if not per_query:
-        raise RuntimeError(
-            "No queries were evaluated (empty run or mismatch with qrels)."
-        )
-
-    avg: Dict[str, float] = {m: 0.0 for m in measures}
+    sums: Dict[str, float] = {}
     n = 0
-    for scores in per_query.values():
+    items = progress(
+        qrels.items(),
+        desc="Computing retrieval metrics",
+        total=len(qrels),
+        unit="query",
+    )
+    for qid, rels in items:
+        relevant = {doc_id: int(rel) for doc_id, rel in rels.items() if int(rel) > 0}
+        ranked = _ranked_doc_ids(run.get(qid, {}))
+        ideal_rels = sorted(relevant.values(), reverse=True)
         n += 1
-        for m in measures:
-            avg[m] += float(scores.get(m, 0.0))
-    for m in avg:
-        avg[m] /= float(max(n, 1))
 
-    out: Dict[str, float] = {}
-    for k in ks:
-        out[f"P@{k}"] = avg[f"P_{k}"]
-        out[f"R@{k}"] = avg[f"recall_{k}"]
-        out[f"NDCG@{k}"] = avg[f"ndcg_cut_{k}"]
+        for k in ks:
+            top_docs = ranked[:k]
+            hit_count = sum(1 for doc_id in top_docs if doc_id in relevant)
+            precision = hit_count / float(k)
+            recall = hit_count / float(max(1, len(relevant)))
+            hit = 1.0 if hit_count > 0 else 0.0
+
+            first_rank = 0
+            for rank, doc_id in enumerate(top_docs, start=1):
+                if doc_id in relevant:
+                    first_rank = rank
+                    break
+            mrr = 0.0 if first_rank == 0 else 1.0 / float(first_rank)
+
+            observed_rels = [relevant.get(doc_id, 0) for doc_id in top_docs]
+            ideal_dcg = _dcg(ideal_rels[:k])
+            ndcg = 0.0 if ideal_dcg <= 0.0 else _dcg(observed_rels) / ideal_dcg
+
+            sums[f"P@{k}"] = sums.get(f"P@{k}", 0.0) + precision
+            sums[f"R@{k}"] = sums.get(f"R@{k}", 0.0) + recall
+            sums[f"NDCG@{k}"] = sums.get(f"NDCG@{k}", 0.0) + ndcg
+            sums[f"Hit@{k}"] = sums.get(f"Hit@{k}", 0.0) + hit
+            sums[f"MRR@{k}"] = sums.get(f"MRR@{k}", 0.0) + mrr
+
+    out: Dict[str, float] = {key: value / float(n) for key, value in sums.items()}
     out["num_queries_eval"] = float(n)
     return out
 
@@ -140,6 +230,7 @@ def run_eval(
     top_k: int | None,
     alpha: float | None,
     embedding_model: str | None,
+    index_path: Path | None = None,
 ) -> Dict[str, float]:
     """Run retrieval evaluation and log metrics/artifacts to MLflow."""
     ks_values = _parse_ks(ks)
@@ -163,6 +254,10 @@ def run_eval(
     qrels_map = read_qrels_tsv(qrels)
     run_map = read_run_trec(effective_run_path)
     metrics = evaluate_with_pytrec_eval(qrels=qrels_map, run=run_map, ks=ks_values)
+    metrics.update(_load_latency_metrics(effective_run_path))
+    index_size_mb = _index_size_mb(index_path)
+    if index_size_mb is not None:
+        metrics["index_size_mb"] = float(index_size_mb)
 
     out_metrics = effective_run_path.with_suffix(
         effective_run_path.suffix + ".metrics.json"
@@ -181,6 +276,7 @@ def run_eval(
             "top_k": top_k,
             "alpha": alpha,
             "embedding_model": embedding_model,
+            "index_path": None if index_path is None else str(index_path),
             "ks": ",".join(map(str, ks_values)),
             "eval_queries": str(eval_queries),
             "qrels": str(qrels),
@@ -213,6 +309,9 @@ def run_from_cfg(cfg: DictConfig) -> Dict[str, float]:
 
     alpha_val = _as_optional_str(run_cfg.alpha)
     top_k_val = _as_optional_str(run_cfg.top_k)
+    index_path: Path | None = None
+    if "retrieval_run" in cfg and "index" in cfg.retrieval_run:
+        index_path = Path(str(cfg.retrieval_run.index))
 
     return run_eval(
         eval_queries=Path(str(run_cfg.eval_queries)),
@@ -229,6 +328,7 @@ def run_from_cfg(cfg: DictConfig) -> Dict[str, float]:
         top_k=int(top_k_val) if top_k_val else None,
         alpha=float(alpha_val) if alpha_val else None,
         embedding_model=_as_optional_str(run_cfg.embedding_model),
+        index_path=index_path,
     )
 
 
@@ -253,6 +353,7 @@ def main() -> None:
     p.add_argument("--top_k", type=int, default=None)
     p.add_argument("--alpha", type=float, default=None)
     p.add_argument("--embedding_model", type=str, default=None)
+    p.add_argument("--index_path", type=Path, default=None)
     args = p.parse_args()
 
     metrics = run_eval(
@@ -270,6 +371,7 @@ def main() -> None:
         top_k=args.top_k,
         alpha=args.alpha,
         embedding_model=args.embedding_model,
+        index_path=args.index_path,
     )
     print(json.dumps(metrics, ensure_ascii=False, indent=2))
 
