@@ -7,6 +7,8 @@ from typing import List
 
 import numpy as np
 
+from medical_rag_reranker.utils.progress import count_text_lines, progress
+
 from . import Retriever, ScoredDoc
 
 
@@ -71,8 +73,15 @@ class BM25Retriever(Retriever):
     def index(self, corpus_path: str) -> None:
         docs = []
         doc_ids = []
+        total = count_text_lines(corpus_path)
         with open(corpus_path, "r", encoding="utf-8") as f:
-            for line in f:
+            rows = progress(
+                f,
+                desc="Building BM25 index",
+                total=total,
+                unit="doc",
+            )
+            for line in rows:
                 r = json.loads(line)
                 doc_ids.append(r["doc_id"])
                 docs.append(simple_tokenize(r["text"]))

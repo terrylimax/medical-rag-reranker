@@ -11,6 +11,8 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoModel, AutoTokenizer
 
+from medical_rag_reranker.utils.progress import count_text_lines, progress
+
 from . import Retriever, ScoredDoc
 
 
@@ -113,9 +115,18 @@ class BiEncoderRetriever(Retriever):
         model,
         max_length: int,
         prefix: str = "",
+        desc: str = "Encoding texts",
+        show_progress: bool = True,
     ) -> np.ndarray:
         vectors: list[np.ndarray] = []
-        for start in range(0, len(texts), int(self.batch_size)):
+        starts = range(0, len(texts), int(self.batch_size))
+        total_batches = (len(texts) + int(self.batch_size) - 1) // int(self.batch_size)
+        batches = (
+            progress(starts, desc=desc, total=total_batches, unit="batch")
+            if show_progress
+            else starts
+        )
+        for start in batches:
             batch_texts = [
                 f"{prefix}{text}" if prefix else text
                 for text in texts[start : start + int(self.batch_size)]
@@ -143,8 +154,15 @@ class BiEncoderRetriever(Retriever):
         self._load_doc_encoder()
         doc_ids: list[str] = []
         texts: list[str] = []
+        total = count_text_lines(corpus_path)
         with open(corpus_path, "r", encoding="utf-8") as f:
-            for line in f:
+            rows = progress(
+                f,
+                desc="Reading bi-encoder index corpus",
+                total=total,
+                unit="doc",
+            )
+            for line in rows:
                 if not line.strip():
                     continue
                 row = json.loads(line)
@@ -165,6 +183,8 @@ class BiEncoderRetriever(Retriever):
             model=self.doc_model,
             max_length=int(self.doc_max_length),
             prefix=str(self.doc_prefix),
+            desc="Encoding bi-encoder documents",
+            show_progress=True,
         )
 
     def retrieve(self, query: str, top_k: int) -> List[ScoredDoc]:
@@ -180,6 +200,8 @@ class BiEncoderRetriever(Retriever):
             model=self.query_model,
             max_length=int(self.query_max_length),
             prefix=str(self.query_prefix),
+            desc="Encoding bi-encoder query",
+            show_progress=False,
         )
         if q.size == 0:
             return []

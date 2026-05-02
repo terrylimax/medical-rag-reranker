@@ -54,11 +54,13 @@ Hybrid (directory shortcut):
 
 import argparse
 import json
+import time
 from pathlib import Path
 
 from omegaconf import DictConfig
 
 from medical_rag_reranker.retrieval.bm25 import BM25Retriever
+from medical_rag_reranker.utils.progress import count_text_lines, progress
 
 
 def _resolve_manifest_path(index_arg: str) -> Path:
@@ -153,7 +155,29 @@ def _load_hybrid_from_manifest(manifest_path: Path):
     )
 
 
-def _load_retriever(retriever_name: str, index_path: str):
+def _get_cfg_value(cfg: DictConfig | None, key: str, default):
+    if cfg is None:
+        return default
+    value = cfg.get(key)
+    return default if value is None else value
+
+
+def _infer_rag_fusion_base(retriever_name: str) -> str:
+    name = str(retriever_name)
+    if name.endswith("_bm25"):
+        return "bm25"
+    if name.endswith("_dense"):
+        return "dense"
+    if name.endswith("_hybrid"):
+        return "hybrid"
+    return "dense"
+
+
+def _load_retriever(
+    retriever_name: str,
+    index_path: str,
+    retrieval_cfg: DictConfig | None = None,
+):
     if retriever_name == "bm25":
         return BM25Retriever.load(index_path)
     if retriever_name == "dense":
@@ -172,6 +196,30 @@ def _load_retriever(retriever_name: str, index_path: str):
     if retriever_name == "hybrid":
         manifest_path = _resolve_manifest_path(index_path)
         return _load_hybrid_from_manifest(manifest_path)
+    if retriever_name == "rag_fusion" or retriever_name.startswith("rag_fusion_"):
+        from medical_rag_reranker.retrieval.rag_fusion import RagFusionRetriever
+
+        base_name = str(
+            _get_cfg_value(
+                retrieval_cfg,
+                "base_retriever",
+                _infer_rag_fusion_base(retriever_name),
+            )
+        )
+        base = _load_retriever(
+            retriever_name=base_name,
+            index_path=index_path,
+            retrieval_cfg=None,
+        )
+        return RagFusionRetriever(
+            base=base,
+            num_queries=int(_get_cfg_value(retrieval_cfg, "num_queries", 5)),
+            cand_k=int(_get_cfg_value(retrieval_cfg, "cand_k", 50)),
+            rrf_k=int(_get_cfg_value(retrieval_cfg, "rrf_k", 60)),
+            include_original=bool(
+                _get_cfg_value(retrieval_cfg, "include_original", True)
+            ),
+        )
     raise ValueError(f"Unsupported retriever: {retriever_name}")
 
 
@@ -182,29 +230,75 @@ def run_retrieval(
     out_path: str,
     top_k: int = 10,
     run_name: str = "baseline",
+    retrieval_cfg: DictConfig | None = None,
 ) -> Path:
     """Run retrieval over a queries JSONL and write a TREC run file."""
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    retriever = _load_retriever(retriever_name=retriever_name, index_path=index_path)
+    retriever = _load_retriever(
+        retriever_name=retriever_name,
+        index_path=index_path,
+        retrieval_cfg=retrieval_cfg,
+    )
+    total_queries = count_text_lines(queries_path)
+    latencies_ms: list[float] = []
+    fusion_query_rows: list[dict] = []
 
     # TREC format: query_id Q0 doc_id rank score run_name
     with (
         open(queries_path, "r", encoding="utf-8") as fq,
         open(out, "w", encoding="utf-8") as fo,
     ):
-        for line in fq:
+        rows = progress(
+            fq,
+            desc=f"Running {retriever_name} retrieval",
+            total=total_queries,
+            unit="query",
+        )
+        for line in rows:
             if not line.strip():
                 continue
             q = json.loads(line)
             qid = _resolve_query_id(q)
             text = _resolve_query_text(q)
 
+            started = time.perf_counter()
             hits = retriever.retrieve(text, top_k=int(top_k))
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            latencies_ms.append(elapsed_ms)
+            expanded_queries = getattr(retriever, "last_queries", None)
+            if expanded_queries:
+                fusion_query_rows.append(
+                    {
+                        "query_id": qid,
+                        "question": text,
+                        "queries": list(expanded_queries),
+                    }
+                )
+            if hasattr(rows, "set_postfix"):
+                rows.set_postfix(latency_ms=f"{elapsed_ms:.1f}")
             for rank, h in enumerate(hits, start=1):
                 fo.write(f"{qid}\tQ0\t{h.doc_id}\t{rank}\t{h.score:.6f}\t{run_name}\n")
 
+    latency_path = out.with_suffix(out.suffix + ".latency.json")
+    latency_payload = {
+        "run_path": str(out),
+        "num_queries": len(latencies_ms),
+        "latencies_ms": latencies_ms,
+    }
+    latency_path.write_text(
+        json.dumps(latency_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(f"Saved retrieval run to: {out}")
+    print(f"Saved retrieval latency profile to: {latency_path}")
+    if fusion_query_rows:
+        fusion_queries_path = out.with_suffix(out.suffix + ".queries.jsonl")
+        with fusion_queries_path.open("w", encoding="utf-8") as f:
+            for row in fusion_query_rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        print(f"Saved RAG Fusion query variants to: {fusion_queries_path}")
     return out
 
 
@@ -217,6 +311,7 @@ def run_from_cfg(cfg: DictConfig) -> Path:
         out_path=str(cfg.retrieval_run.out),
         top_k=int(cfg.retrieval_run.top_k),
         run_name=str(cfg.retrieval_run.run_name),
+        retrieval_cfg=cfg.retrieval,
     )
 
 
@@ -242,7 +337,9 @@ def main():
         ),
     )
     p.add_argument(
-        "--retriever", choices=["bm25", "dense", "bi_encoder", "hybrid"], required=True
+        "--retriever",
+        choices=["bm25", "dense", "bi_encoder", "hybrid", "rag_fusion"],
+        required=True,
     )
     p.add_argument(
         "--index",

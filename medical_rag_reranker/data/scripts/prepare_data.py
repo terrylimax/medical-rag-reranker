@@ -21,6 +21,9 @@ from typing import List, Dict, Any, Tuple
 
 from datasets import load_dataset
 
+from medical_rag_reranker.data.metadata import extract_medical_metadata
+from medical_rag_reranker.utils.progress import count_text_lines, progress, timed_stage
+
 
 SEED = 42
 TRAIN_RATIO = 0.8
@@ -45,8 +48,15 @@ def read_nih_qa(path: Path) -> List[Dict[str, Any]]:
 
     suffix = path.suffix.lower()
     if suffix == ".jsonl":
+        total = count_text_lines(path)
         with path.open("r", encoding="utf-8") as f:
-            for idx, line in enumerate(f):
+            rows = progress(
+                f,
+                desc="Reading raw QA JSONL",
+                total=total,
+                unit="row",
+            )
+            for idx, line in enumerate(rows):
                 obj = json.loads(line)
                 data.append(
                     {
@@ -62,7 +72,8 @@ def read_nih_qa(path: Path) -> List[Dict[str, Any]]:
     if suffix == ".csv":
         with path.open("r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
-            for idx, row in enumerate(reader):
+            rows = progress(reader, desc="Reading raw QA CSV", unit="row")
+            for idx, row in enumerate(rows):
                 question = pick(row, ["question"])
                 answer = pick(row, ["answer"])
                 source = pick(row, ["source"]) or "MedQuAD"
@@ -84,7 +95,13 @@ def read_nih_qa(path: Path) -> List[Dict[str, Any]]:
     if suffix == ".parquet":
         # Keep this path dependency-light by using datasets parquet loader.
         ds = load_dataset("parquet", data_files=str(path), split="train")
-        for idx, row in enumerate(ds):
+        rows = progress(
+            ds,
+            desc="Reading raw QA parquet",
+            total=len(ds),
+            unit="row",
+        )
+        for idx, row in enumerate(rows):
 
             def pick(keys: List[str]) -> Any:
                 for key in keys:
@@ -109,7 +126,9 @@ def read_nih_qa(path: Path) -> List[Dict[str, Any]]:
 def write_jsonl(path: Path, rows: List[Dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
-        for r in rows:
+        for r in progress(
+            rows, desc=f"Writing {path.name}", total=len(rows), unit="row"
+        ):
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
@@ -141,7 +160,12 @@ def make_splits(ids: List[str]) -> Tuple[List[str], List[str], List[str]]:
 
 def build_corpus_from_answers(qa_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     corpus = []
-    for r in qa_rows:
+    for r in progress(
+        qa_rows,
+        desc="Building answer corpus",
+        total=len(qa_rows),
+        unit="row",
+    ):
         qid = r["question_id"]
         source = r.get("source", "nih").lower()
 
@@ -151,6 +175,9 @@ def build_corpus_from_answers(qa_rows: List[Dict[str, Any]]) -> List[Dict[str, A
                 "text": r["answer"],
                 "source": source.upper(),
                 "question_id": qid,
+                "group_id": r.get("group_id"),
+                "question_intent": r.get("question_intent"),
+                "diagnosis_or_topic": r.get("diagnosis_or_topic"),
             }
         )
     return corpus
@@ -189,7 +216,12 @@ def build_eval_pack(
 def filter_valid_qa_rows(qa_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Keep only rows with non-empty question and answer text."""
     cleaned: List[Dict[str, Any]] = []
-    for row in qa_rows:
+    for row in progress(
+        qa_rows,
+        desc="Filtering QA rows",
+        total=len(qa_rows),
+        unit="row",
+    ):
         question = str(row.get("question") or "").strip()
         answer = str(row.get("answer") or "").strip()
         if not question or not answer:
@@ -211,7 +243,13 @@ def ensure_unique_question_ids(qa_rows: List[Dict[str, Any]]) -> List[Dict[str, 
     duplicate_counters: dict[str, int] = {}
     normalized: List[Dict[str, Any]] = []
 
-    for idx, row in enumerate(qa_rows):
+    rows = progress(
+        qa_rows,
+        desc="Normalizing question ids",
+        total=len(qa_rows),
+        unit="row",
+    )
+    for idx, row in enumerate(rows):
         copied = dict(row)
         base = str(copied.get("question_id") or "").strip() or f"q_{idx}"
         qid = base
@@ -228,6 +266,7 @@ def ensure_unique_question_ids(qa_rows: List[Dict[str, Any]]) -> List[Dict[str, 
 
         seen.add(qid)
         copied["question_id"] = qid
+        copied.update(extract_medical_metadata(copied))
         normalized.append(copied)
 
     return normalized
@@ -253,9 +292,10 @@ def prepare_data(
     qrels_out = out_root / "qrels.tsv"
 
     try:
-        qa_rows = ensure_unique_question_ids(
-            filter_valid_qa_rows(read_nih_qa(raw_path))
-        )
+        with timed_stage("Prepare QA artifacts"):
+            qa_rows = ensure_unique_question_ids(
+                filter_valid_qa_rows(read_nih_qa(raw_path))
+            )
 
         # 1) qa.jsonl
         write_jsonl(qa_out, qa_rows)

@@ -79,6 +79,7 @@ from pathlib import Path
 from omegaconf import DictConfig
 
 from medical_rag_reranker.retrieval.bm25 import BM25Retriever
+from medical_rag_reranker.utils.progress import timed_stage
 
 
 def _default_index_filename(retriever: str) -> str:
@@ -165,6 +166,7 @@ def run_index(
     query_max_length: int = 64,
     doc_max_length: int = 256,
     encode_batch_size: int = 32,
+    max_seq_length: int | None = None,
     local_files_only: bool = False,
     fusion: str = "score",
     alpha: float = 0.5,
@@ -202,18 +204,24 @@ def run_index(
                     "Install dependencies or switch to retrieval=bm25."
                 ) from e
 
-            dense = DenseRetriever(model_name=model)
+            dense = DenseRetriever(
+                model_name=model,
+                batch_size=int(encode_batch_size),
+                max_seq_length=max_seq_length,
+            )
         else:
             raise ValueError(
                 f"Unsupported hybrid dense_backend: {dense_backend!r}. "
                 "Expected `dense` or `bi_encoder`."
             )
 
-        bm25.index(corpus)
-        bm25.save(str(bm25_path))
+        with timed_stage("Build hybrid BM25 index"):
+            bm25.index(corpus)
+            bm25.save(str(bm25_path))
 
-        dense.index(corpus)
-        dense.save(str(dense_path))
+        with timed_stage("Build hybrid dense index"):
+            dense.index(corpus)
+            dense.save(str(dense_path))
 
         manifest = {
             "format": "medical-rag-reranker.hybrid-index",
@@ -256,7 +264,11 @@ def run_index(
                 "Dense index requires `sentence-transformers`. "
                 "Install dependencies or switch to retrieval=bm25."
             ) from e
-        retriever_impl = DenseRetriever(model_name=model)
+        retriever_impl = DenseRetriever(
+            model_name=model,
+            batch_size=int(encode_batch_size),
+            max_seq_length=max_seq_length,
+        )
     elif retriever == "bi_encoder":
         from medical_rag_reranker.retrieval.bi_encoder import BiEncoderRetriever
 
@@ -273,8 +285,9 @@ def run_index(
     else:
         raise ValueError(f"Unknown retriever: {retriever}")
 
-    retriever_impl.index(corpus)
-    retriever_impl.save(str(resolved_out))
+    with timed_stage(f"Build {retriever} index"):
+        retriever_impl.index(corpus)
+        retriever_impl.save(str(resolved_out))
     print(f"Saved index to: {resolved_out}")
     return resolved_out
 
@@ -287,7 +300,7 @@ def run_from_cfg(cfg: DictConfig) -> Path | tuple[Path, Path, Path]:
         retriever=str(retrieval_cfg.name),
         corpus=str(run_cfg.corpus),
         out=str(run_cfg.out),
-        model=str(run_cfg.model),
+        model=str(retrieval_cfg.get("model_name", run_cfg.model)),
         query_model=str(retrieval_cfg.get("query_model_name", run_cfg.query_model)),
         doc_model=str(retrieval_cfg.get("doc_model_name", run_cfg.doc_model)),
         dense_backend=str(retrieval_cfg.get("dense_backend", run_cfg.dense_backend)),
@@ -298,6 +311,11 @@ def run_from_cfg(cfg: DictConfig) -> Path | tuple[Path, Path, Path]:
         ),
         doc_max_length=int(retrieval_cfg.get("doc_max_length", run_cfg.doc_max_length)),
         encode_batch_size=int(retrieval_cfg.get("batch_size", run_cfg.batch_size)),
+        max_seq_length=(
+            int(retrieval_cfg.max_seq_length)
+            if retrieval_cfg.get("max_seq_length") is not None
+            else None
+        ),
         local_files_only=bool(
             retrieval_cfg.get("local_files_only", run_cfg.local_files_only)
         ),
