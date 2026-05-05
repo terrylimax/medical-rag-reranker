@@ -19,5 +19,7 @@ defaults:
   - run@run.prep_data: prep_data
   - run@run.retrieval_index: retrieval_index
   - run@run.eval_retrieval: eval_retrieval
+  - run@run.eval_generation: eval_generation
+  - run@run.eval_reranked_retrieval: eval_reranked_retrieval
   - run@run.rag_demo: rag_demo
   - _self_
