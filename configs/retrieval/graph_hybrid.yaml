@@ -1,0 +1,22 @@
+name: graph_hybrid
+index_file: graph_hybrid/graph_index.json
+
+base_retriever: hybrid
+graph_path: ${run.prep_data.out_dir}/medquad_graph.json
+
+alpha: 0.6
+cand_k: 50
+seed_k: 20
+expand_k: 50
+max_hops: 2
+base_weight: 0.7
+graph_weight: 0.3
+hop_decay: 0.65
+
+relation_weights:
+  same_document_id: 1.0
+  same_focus: 1.0
+  same_cui: 0.9
+  focus_synonym_match: 0.7
+  question_type_boost: 0.2
+  same_semantic_group: 0.075

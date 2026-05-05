@@ -1,5 +1,6 @@
 eval_queries: ${run.prep_data.out_dir}/eval_queries.jsonl
 qrels: ${run.prep_data.out_dir}/qrels.tsv
+corpus: ${run.prep_data.out_dir}/corpus.jsonl
 
 # Option A: evaluate existing run file
 run_path: null

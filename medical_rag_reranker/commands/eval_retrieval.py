@@ -8,11 +8,12 @@ import math
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import mlflow
 from omegaconf import DictConfig
 
+from medical_rag_reranker.graph.aspects import aspects_from_metadata, coerce_str_list
 from medical_rag_reranker.utils.progress import path_size_bytes, progress
 
 
@@ -72,6 +73,125 @@ def read_run_trec(path: Path) -> Dict[str, Dict[str, float]]:
             qid, _q0, docid, _rank, score, _runname = parts[:6]
             run.setdefault(qid, {})[docid] = float(score)
     return run
+
+
+def read_queries_jsonl(path: Path) -> Dict[str, Dict[str, Any]]:
+    queries: Dict[str, Dict[str, Any]] = {}
+    with path.open("r", encoding="utf-8") as f:
+        for idx, line in enumerate(f):
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            qid = row.get("query_id") or row.get("question_id") or f"query-{idx}"
+            queries[str(qid)] = row
+    return queries
+
+
+def read_corpus_jsonl(path: Path | None) -> Dict[str, Dict[str, Any]]:
+    if path is None or not path.exists():
+        return {}
+    docs: Dict[str, Dict[str, Any]] = {}
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            doc_id = row.get("doc_id")
+            if doc_id:
+                docs[str(doc_id)] = row
+    return docs
+
+
+def _anchors_from_query(row: Dict[str, Any]) -> list[str]:
+    for key in ("anchor_doc_ids", "gold_doc_ids"):
+        values = coerce_str_list(row.get(key))
+        if values:
+            return values
+    return coerce_str_list(row.get("gold_doc_id"))
+
+
+def _requested_aspects(query: Dict[str, Any]) -> set[str]:
+    requested = set()
+    for value in coerce_str_list(query.get("requested_aspects")):
+        requested.add(value.strip().lower().replace(" ", "_"))
+    if not requested:
+        requested.update(aspects_from_metadata(query))
+    return requested
+
+
+def _expected_cuis(
+    query: Dict[str, Any],
+    qrels_for_query: Dict[str, int],
+    docstore: Dict[str, Dict[str, Any]],
+) -> set[str]:
+    explicit = set(coerce_str_list(query.get("umls_cui") or query.get("expected_cuis")))
+    if explicit:
+        return explicit
+    values: set[str] = set()
+    for doc_id, rel in qrels_for_query.items():
+        if int(rel) <= 0:
+            continue
+        values.update(coerce_str_list(docstore.get(doc_id, {}).get("umls_cui")))
+    return values
+
+
+def evaluate_graph_metadata_metrics(
+    eval_queries: Path,
+    qrels: Dict[str, Dict[str, int]],
+    run: Dict[str, Dict[str, float]],
+    ks: List[int],
+    corpus_path: Path | None,
+) -> Dict[str, float]:
+    queries = read_queries_jsonl(eval_queries)
+    docstore = read_corpus_jsonl(corpus_path)
+    metrics: Dict[str, float] = {}
+
+    ranked_by_query = {qid: _ranked_doc_ids(scores) for qid, scores in run.items()}
+
+    for k in ks:
+        type_scores: list[float] = []
+        cui_scores: list[float] = []
+        retention_scores: list[float] = []
+
+        for qid, query in queries.items():
+            hits = ranked_by_query.get(qid, [])[:k]
+
+            requested = _requested_aspects(query)
+            if requested and docstore:
+                covered: set[str] = set()
+                for doc_id in hits:
+                    covered.update(aspects_from_metadata(docstore.get(doc_id, {})))
+                type_scores.append(
+                    len(covered & requested) / float(max(1, len(requested)))
+                )
+
+            expected_cuis = _expected_cuis(query, qrels.get(qid, {}), docstore)
+            if expected_cuis and docstore:
+                seen_cuis: set[str] = set()
+                for doc_id in hits:
+                    seen_cuis.update(
+                        coerce_str_list(docstore.get(doc_id, {}).get("umls_cui"))
+                    )
+                cui_scores.append(
+                    len(seen_cuis & expected_cuis) / float(max(1, len(expected_cuis)))
+                )
+
+            anchors = _anchors_from_query(query)
+            if anchors:
+                retention_scores.append(
+                    len(set(hits) & set(anchors)) / float(max(1, len(anchors)))
+                )
+
+        if type_scores:
+            metrics[f"question_type_coverage@{k}"] = sum(type_scores) / len(type_scores)
+        if cui_scores:
+            metrics[f"cui_coverage@{k}"] = sum(cui_scores) / len(cui_scores)
+        if retention_scores:
+            metrics[f"gold_retention@{k}"] = sum(retention_scores) / len(
+                retention_scores
+            )
+
+    return metrics
 
 
 def _ranked_doc_ids(scores: Dict[str, float]) -> list[str]:
@@ -231,6 +351,7 @@ def run_eval(
     alpha: float | None,
     embedding_model: str | None,
     index_path: Path | None = None,
+    corpus_path: Path | None = None,
 ) -> Dict[str, float]:
     """Run retrieval evaluation and log metrics/artifacts to MLflow."""
     ks_values = _parse_ks(ks)
@@ -254,6 +375,15 @@ def run_eval(
     qrels_map = read_qrels_tsv(qrels)
     run_map = read_run_trec(effective_run_path)
     metrics = evaluate_with_pytrec_eval(qrels=qrels_map, run=run_map, ks=ks_values)
+    metrics.update(
+        evaluate_graph_metadata_metrics(
+            eval_queries=eval_queries,
+            qrels=qrels_map,
+            run=run_map,
+            ks=ks_values,
+            corpus_path=corpus_path,
+        )
+    )
     metrics.update(_load_latency_metrics(effective_run_path))
     index_size_mb = _index_size_mb(index_path)
     if index_size_mb is not None:
@@ -277,6 +407,7 @@ def run_eval(
             "alpha": alpha,
             "embedding_model": embedding_model,
             "index_path": None if index_path is None else str(index_path),
+            "corpus_path": None if corpus_path is None else str(corpus_path),
             "ks": ",".join(map(str, ks_values)),
             "eval_queries": str(eval_queries),
             "qrels": str(qrels),
@@ -329,6 +460,11 @@ def run_from_cfg(cfg: DictConfig) -> Dict[str, float]:
         alpha=float(alpha_val) if alpha_val else None,
         embedding_model=_as_optional_str(run_cfg.embedding_model),
         index_path=index_path,
+        corpus_path=(
+            Path(str(run_cfg.corpus))
+            if _as_optional_str(getattr(run_cfg, "corpus", None))
+            else None
+        ),
     )
 
 
@@ -354,6 +490,7 @@ def main() -> None:
     p.add_argument("--alpha", type=float, default=None)
     p.add_argument("--embedding_model", type=str, default=None)
     p.add_argument("--index_path", type=Path, default=None)
+    p.add_argument("--corpus", type=Path, default=None)
     args = p.parse_args()
 
     metrics = run_eval(
@@ -372,6 +509,7 @@ def main() -> None:
         alpha=args.alpha,
         embedding_model=args.embedding_model,
         index_path=args.index_path,
+        corpus_path=args.corpus,
     )
     print(json.dumps(metrics, ensure_ascii=False, indent=2))
 

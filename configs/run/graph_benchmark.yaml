@@ -1,0 +1,7 @@
+corpus: ${run.prep_data.out_dir}/corpus.jsonl
+splits: ${run.prep_data.out_dir}/splits.json
+out_dir: ${run.prep_data.out_dir}
+split_name: test
+max_queries: 300
+seed: 42
+min_relevant_docs: 2

@@ -13,15 +13,15 @@
 его можно подмешать как дополнительные документы.
 """
 
+import csv
 import json
 import random
-import csv
+import re
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 
-from datasets import load_dataset
-
 from medical_rag_reranker.data.metadata import extract_medical_metadata
+from medical_rag_reranker.graph.builder import build_medquad_graph
 from medical_rag_reranker.utils.progress import count_text_lines, progress, timed_stage
 
 
@@ -32,6 +32,97 @@ TEST_RATIO = 0.1
 
 EVAL_SIZE = 300  # набор запросов для промежуточных прогонов
 
+GRAPH_METADATA_FIELDS = [
+    "document_id",
+    "document_source",
+    "document_url",
+    "question_focus",
+    "question_type",
+    "umls_cui",
+    "umls_semantic_types",
+    "umls_semantic_group",
+    "synonyms",
+]
+
+
+def is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    try:
+        return bool(value != value)
+    except Exception:
+        return False
+
+
+def pick_value(row: Dict[str, Any], keys: List[str]) -> Any:
+    for key in keys:
+        if key in row and not is_missing(row[key]):
+            return row[key]
+    return None
+
+
+def normalize_metadata_value(value: Any) -> Any:
+    if is_missing(value):
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        return text if text else None
+    if isinstance(value, (list, tuple, set)):
+        cleaned = []
+        for item in value:
+            if is_missing(item):
+                continue
+            text = str(item).strip()
+            if text:
+                cleaned.append(text)
+        return cleaned or None
+    return str(value).strip()
+
+
+def build_qa_row(row: Dict[str, Any], idx: int) -> Dict[str, Any]:
+    question_id = pick_value(row, ["question_id", "id"]) or str(idx)
+    question_focus = pick_value(row, ["question_focus", "focus_area", "topic"])
+    source = pick_value(row, ["source"])
+    document_source = pick_value(row, ["document_source"])
+
+    out: Dict[str, Any] = {
+        "question_id": str(question_id),
+        "original_question_id": str(question_id),
+        "base_question_id": str(question_id),
+        "question": pick_value(row, ["question", "q"]),
+        "answer": pick_value(row, ["answer", "a"]),
+        "source": source or document_source or "MedQuAD",
+        "topic": question_focus,
+        "document_id": pick_value(row, ["document_id", "doc_id"]),
+        "document_source": document_source,
+        "document_url": pick_value(row, ["document_url", "url"]),
+        "question_focus": question_focus,
+        "question_type": pick_value(row, ["question_type", "qtype", "type"]),
+        "umls_cui": pick_value(row, ["umls_cui", "cui", "cuis"]),
+        "umls_semantic_types": pick_value(
+            row, ["umls_semantic_types", "semantic_types"]
+        ),
+        "umls_semantic_group": pick_value(
+            row, ["umls_semantic_group", "semantic_group"]
+        ),
+        "synonyms": pick_value(row, ["synonyms", "synonym"]),
+    }
+
+    normalized: Dict[str, Any] = {}
+    for key, value in out.items():
+        if key in ("question", "answer"):
+            normalized[key] = value
+        else:
+            normalized[key] = normalize_metadata_value(value)
+    return normalized
+
+
+def safe_doc_source_slug(source: object) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", str(source or "nih").strip().lower())
+    return slug.strip("_") or "nih"
+
 
 def read_nih_qa(path: Path) -> List[Dict[str, Any]]:
     """
@@ -39,12 +130,6 @@ def read_nih_qa(path: Path) -> List[Dict[str, Any]]:
     Возвращает список dict с полями question_id, question, answer, source, topic.
     """
     data: List[Dict[str, Any]] = []
-
-    def pick(row: Dict[str, Any], keys: List[str]) -> Any:
-        for k in keys:
-            if k in row and row[k] not in (None, ""):
-                return row[k]
-        return None
 
     suffix = path.suffix.lower()
     if suffix == ".jsonl":
@@ -58,15 +143,7 @@ def read_nih_qa(path: Path) -> List[Dict[str, Any]]:
             )
             for idx, line in enumerate(rows):
                 obj = json.loads(line)
-                data.append(
-                    {
-                        "question_id": obj.get("question_id") or str(idx),
-                        "question": obj.get("question"),
-                        "answer": obj.get("answer"),
-                        "source": obj.get("source", "MedQuAD"),
-                        "topic": obj.get("topic"),
-                    }
-                )
+                data.append(build_qa_row(obj, idx))
         return data
 
     if suffix == ".csv":
@@ -74,26 +151,13 @@ def read_nih_qa(path: Path) -> List[Dict[str, Any]]:
             reader = csv.DictReader(f)
             rows = progress(reader, desc="Reading raw QA CSV", unit="row")
             for idx, row in enumerate(rows):
-                question = pick(row, ["question"])
-                answer = pick(row, ["answer"])
-                source = pick(row, ["source"]) or "MedQuAD"
-                topic = pick(row, ["focus_area"])
-
-                data.append(
-                    {
-                        "question_id": row.get("question_id")
-                        or row.get("id")
-                        or str(idx),
-                        "question": question,
-                        "answer": answer,
-                        "source": source,
-                        "topic": topic,
-                    }
-                )
+                data.append(build_qa_row(dict(row), idx))
         return data
 
     if suffix == ".parquet":
         # Keep this path dependency-light by using datasets parquet loader.
+        from datasets import load_dataset
+
         ds = load_dataset("parquet", data_files=str(path), split="train")
         rows = progress(
             ds,
@@ -102,22 +166,7 @@ def read_nih_qa(path: Path) -> List[Dict[str, Any]]:
             unit="row",
         )
         for idx, row in enumerate(rows):
-
-            def pick(keys: List[str]) -> Any:
-                for key in keys:
-                    if key in row and row[key] not in (None, ""):
-                        return row[key]
-                return None
-
-            data.append(
-                {
-                    "question_id": pick(["question_id", "id"]) or str(idx),
-                    "question": pick(["question", "q"]),
-                    "answer": pick(["answer", "a"]),
-                    "source": pick(["source"]) or "MedQuAD",
-                    "topic": pick(["topic", "focus_area"]),
-                }
-            )
+            data.append(build_qa_row(dict(row), idx))
         return data
 
     raise ValueError(f"Unsupported file format: {suffix}")
@@ -167,19 +216,28 @@ def build_corpus_from_answers(qa_rows: List[Dict[str, Any]]) -> List[Dict[str, A
         unit="row",
     ):
         qid = r["question_id"]
-        source = r.get("source", "nih").lower()
+        source = safe_doc_source_slug(r.get("source") or "nih")
+        doc = {
+            "doc_id": f"{source}_ans_{qid}",
+            "text": r["answer"],
+            "source": source.upper(),
+            "question_id": qid,
+            "group_id": r.get("group_id"),
+            "question_intent": r.get("question_intent"),
+            "diagnosis_or_topic": r.get("diagnosis_or_topic"),
+        }
 
-        corpus.append(
-            {
-                "doc_id": f"{source}_ans_{qid}",
-                "text": r["answer"],
-                "source": source.upper(),
-                "question_id": qid,
-                "group_id": r.get("group_id"),
-                "question_intent": r.get("question_intent"),
-                "diagnosis_or_topic": r.get("diagnosis_or_topic"),
-            }
-        )
+        for field in [
+            "original_question_id",
+            "base_question_id",
+            "topic",
+            *GRAPH_METADATA_FIELDS,
+        ]:
+            value = r.get(field)
+            if value not in (None, "", []):
+                doc[field] = value
+
+        corpus.append(doc)
     return corpus
 
 
@@ -199,15 +257,24 @@ def build_eval_pack(
     rng.shuffle(candidates)
     chosen = candidates[: min(eval_size, len(candidates))]
 
-    eval_queries = [
-        {"query_id": r["question_id"], "question": r["question"]} for r in chosen
-    ]
+    eval_queries = []
 
     # qrels: единственный релевантный doc — answer-doc этого вопроса
     qrels_lines = []
     for r in chosen:
-        source = r.get("source", "nih").lower()
-        doc_id = f"{source}_ans_{r['question_id']}"
+        source = r.get("source") or "nih"
+        doc_id = f"{safe_doc_source_slug(source)}_ans_{r['question_id']}"
+        query = {
+            "query_id": r["question_id"],
+            "question": r["question"],
+            "question_id": r["question_id"],
+            "gold_doc_id": doc_id,
+        }
+        for field in ["question_focus", "question_type", "umls_cui"]:
+            value = r.get(field)
+            if value not in (None, "", []):
+                query[field] = value
+        eval_queries.append(query)
         qrels_lines.append(f'{r["question_id"]}\t0\t{doc_id}\t1')
 
     return eval_queries, qrels_lines
@@ -265,6 +332,8 @@ def ensure_unique_question_ids(qa_rows: List[Dict[str, Any]]) -> List[Dict[str, 
                     break
 
         seen.add(qid)
+        copied.setdefault("original_question_id", base)
+        copied.setdefault("base_question_id", base)
         copied["question_id"] = qid
         copied.update(extract_medical_metadata(copied))
         normalized.append(copied)
@@ -290,6 +359,7 @@ def prepare_data(
     splits_out = out_root / "splits.json"
     eval_queries_out = out_root / "eval_queries.jsonl"
     qrels_out = out_root / "qrels.tsv"
+    graph_out = out_root / "medquad_graph.json"
 
     try:
         with timed_stage("Prepare QA artifacts"):
@@ -309,7 +379,10 @@ def prepare_data(
         corpus_rows = build_corpus_from_answers(qa_rows)
         write_jsonl(corpus_out, corpus_rows)
 
-        # 4) eval pack
+        # 4) graph artifact from preserved MedQuAD metadata
+        build_medquad_graph(corpus_out, graph_out)
+
+        # 5) eval pack
         eval_queries, qrels_lines = build_eval_pack(qa_rows, test_ids, int(eval_size))
         write_jsonl(eval_queries_out, eval_queries)
         qrels_out.parent.mkdir(parents=True, exist_ok=True)
@@ -320,6 +393,7 @@ def prepare_data(
     return {
         "qa_path": str(qa_out),
         "corpus_path": str(corpus_out),
+        "graph_path": str(graph_out),
         "splits_path": str(splits_out),
         "eval_queries_path": str(eval_queries_out),
         "qrels_path": str(qrels_out),
