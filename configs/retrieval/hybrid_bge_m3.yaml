@@ -1,0 +1,8 @@
+name: hybrid
+index_file: hybrid_bge_m3/hybrid_index.json
+dense_backend: dense
+model_name: BAAI/bge-m3
+batch_size: 4
+max_seq_length: 512
+fusion: rrf
+rrf_k: 60

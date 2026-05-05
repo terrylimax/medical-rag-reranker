@@ -163,6 +163,15 @@ venv.bak/
 # DVC local remote storage (kept out of git)
 /dvc_storage/
 
+# Local experiment artifacts.
+/artifacts/
+/mlflow.db
+/mlruns/
+/runs/*.trec
+/runs/*.trec.latency.json
+/runs/jobs/
+/runs/validation/
+
 # Spyder project settings
 .spyderproject
 .spyproject

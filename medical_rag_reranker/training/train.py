@@ -3,6 +3,7 @@ from __future__ import annotations
 from omegaconf import DictConfig
 
 import lightning.pytorch as pl
+from lightning.pytorch.callbacks import TQDMProgressBar
 from lightning.pytorch.loggers import MLFlowLogger
 
 from medical_rag_reranker.data.datamodule import RerankerDataModule
@@ -25,12 +26,15 @@ def train_from_cfg(cfg: DictConfig) -> None:
     # Log hyperparameters and code version
     hparams = {
         "data.raw_dir": str(cfg.data.raw_dir),
+        "data.processed_dir": str(cfg.data.processed_dir),
+        "data.prefer_prepared_artifacts": bool(cfg.data.prefer_prepared_artifacts),
         "model.model_name": str(cfg.model.model_name),
         "model.max_length": int(cfg.model.max_length),
         "model.negatives_per_query": int(cfg.model.negatives_per_query),
         "train.seed": int(cfg.train.seed),
         "train.batch_size": int(cfg.train.batch_size),
         "train.num_workers": int(cfg.train.num_workers),
+        "train.hard_negative_pool_size": int(cfg.train.hard_negative_pool_size),
         "train.lr": float(cfg.train.lr),
         "train.weight_decay": float(cfg.train.weight_decay),
         "train.max_epochs": int(cfg.train.max_epochs),
@@ -40,17 +44,26 @@ def train_from_cfg(cfg: DictConfig) -> None:
             getattr(cfg.train, "limit_train_batches", 1.0)
         ),
         "train.limit_val_batches": float(getattr(cfg.train, "limit_val_batches", 1.0)),
+        "train.enable_progress_bar": bool(
+            getattr(cfg.train, "enable_progress_bar", True)
+        ),
+        "train.progress_refresh_rate": int(
+            getattr(cfg.train, "progress_refresh_rate", 10)
+        ),
         "git.commit_id": get_git_commit_id(),
     }
     mlf_logger.log_hyperparams(hparams)
 
     datamodule = RerankerDataModule(
         raw_dir=str(cfg.data.raw_dir),
+        processed_dir=str(cfg.data.processed_dir),
         model_name=str(cfg.model.model_name),
         max_length=int(cfg.model.max_length),
         batch_size=int(cfg.train.batch_size),
         num_workers=int(cfg.train.num_workers),
         negatives_per_query=int(cfg.model.negatives_per_query),
+        prefer_prepared_artifacts=bool(cfg.data.prefer_prepared_artifacts),
+        hard_negative_pool_size=int(cfg.train.hard_negative_pool_size),
         seed=int(cfg.train.seed),
     )
 
@@ -59,6 +72,14 @@ def train_from_cfg(cfg: DictConfig) -> None:
         lr=float(cfg.train.lr),
         weight_decay=float(cfg.train.weight_decay),
     )
+
+    callbacks = []
+    if bool(getattr(cfg.train, "enable_progress_bar", True)):
+        callbacks.append(
+            TQDMProgressBar(
+                refresh_rate=int(getattr(cfg.train, "progress_refresh_rate", 10))
+            )
+        )
 
     trainer = pl.Trainer(
         max_epochs=int(cfg.train.max_epochs),
@@ -69,6 +90,15 @@ def train_from_cfg(cfg: DictConfig) -> None:
         limit_train_batches=float(getattr(cfg.train, "limit_train_batches", 1.0)),
         limit_val_batches=float(getattr(cfg.train, "limit_val_batches", 1.0)),
         logger=mlf_logger,
+        enable_progress_bar=bool(getattr(cfg.train, "enable_progress_bar", True)),
+        callbacks=callbacks,
     )
 
     trainer.fit(model, datamodule=datamodule)
+    checkpoint_callback = getattr(trainer, "checkpoint_callback", None)
+    best_path = getattr(checkpoint_callback, "best_model_path", "") or ""
+    last_path = getattr(checkpoint_callback, "last_model_path", "") or ""
+    if best_path:
+        print(f"Best reranker checkpoint: {best_path}")
+    elif last_path:
+        print(f"Last reranker checkpoint: {last_path}")

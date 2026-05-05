@@ -1,0 +1,8 @@
+name: rag_fusion_bm25
+index_file: bm25_index.json.gz
+base_retriever: bm25
+num_queries: 5
+cand_k: 50
+rrf_k: 60
+include_original: true
+fusion: rrf

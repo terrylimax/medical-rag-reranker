@@ -1,2 +1,4 @@
 name: bm25
 index_file: bm25_index.json.gz
+fusion: score
+rrf_k: 60

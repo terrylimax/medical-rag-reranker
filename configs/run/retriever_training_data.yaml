@@ -1,0 +1,10 @@
+processed_dir: ${data.processed_dir}
+out_dir: ${paths.artifacts_dir}/retriever_training
+train_out: train_retriever.jsonl
+val_out: val_retriever.jsonl
+train_split: train
+val_split: val
+negatives_per_query: 4
+hard_negative_pool_size: 50
+restrict_train_negatives_to_train: true
+seed: 42

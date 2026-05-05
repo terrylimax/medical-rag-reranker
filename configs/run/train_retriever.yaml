@@ -1,0 +1,22 @@
+train_path: ${run.retriever_training_data.out_dir}/${run.retriever_training_data.train_out}
+val_path: ${run.retriever_training_data.out_dir}/${run.retriever_training_data.val_out}
+output_dir: ${paths.artifacts_dir}/retriever/medcpt-bi-encoder
+
+query_model_name: ncbi/MedCPT-Query-Encoder
+doc_model_name: ncbi/MedCPT-Article-Encoder
+pooling: cls
+normalize: true
+query_max_length: 64
+doc_max_length: 256
+local_files_only: false
+
+batch_size: 8
+num_workers: 0
+epochs: 1
+lr: 2e-5
+weight_decay: 0.01
+temperature: 0.05
+max_grad_norm: 1.0
+device: auto
+seed: 42
+log_every_n_steps: 20

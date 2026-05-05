@@ -30,6 +30,8 @@ def main() -> None:
     - python -m medical_rag_reranker.commands generate
     - python -m medical_rag_reranker.commands prep_data
     - python -m medical_rag_reranker.commands index
+    - python -m medical_rag_reranker.commands prep_retriever_training_data
+    - python -m medical_rag_reranker.commands train_retriever
     - python -m medical_rag_reranker.commands eval_retrieval
     - python -m medical_rag_reranker.commands eval_generation
     - python -m medical_rag_reranker.commands eval_reranked_retrieval
@@ -48,6 +50,8 @@ def main() -> None:
     - python -m medical_rag_reranker.commands generate --question "..."
     - python -m medical_rag_reranker.commands prep_data
     - python -m medical_rag_reranker.commands index --overrides "retrieval=hybrid"
+    - python -m medical_rag_reranker.commands prep_retriever_training_data
+    - python -m medical_rag_reranker.commands train_retriever
     - python -m medical_rag_reranker.commands eval_retrieval
     - python -m medical_rag_reranker.commands eval_generation
     - python -m medical_rag_reranker.commands eval_reranked_retrieval
@@ -67,6 +71,8 @@ def main() -> None:
             "generate": cmd_generate,
             "prep_data": cmd_prep_data,
             "index": cmd_index,
+            "prep_retriever_training_data": cmd_prep_retriever_training_data,
+            "train_retriever": cmd_train_retriever,
             "eval_retrieval": cmd_eval_retrieval,
             "eval_generation": cmd_eval_generation,
             "eval_reranked_retrieval": cmd_eval_reranked_retrieval,
@@ -317,6 +323,36 @@ def cmd_index(
     if isinstance(result, tuple):
         return tuple(str(p) for p in result)
     return str(result)
+
+
+def cmd_prep_retriever_training_data(
+    config_dir: Optional[str] = None,
+    overrides: Optional[str] = None,
+) -> dict:
+    """Build hard-negative contrastive training rows for the dense retriever."""
+    from medical_rag_reranker.commands.retriever_training_data import (
+        run_from_cfg as prep_retriever_training_data_from_cfg,
+    )
+
+    cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
+    ensure_data(cfg)
+    result = prep_retriever_training_data_from_cfg(cfg)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
+
+
+def cmd_train_retriever(
+    config_dir: Optional[str] = None,
+    overrides: Optional[str] = None,
+) -> dict:
+    """Fine-tune the bi-encoder retriever on prepared hard-negative rows."""
+    from medical_rag_reranker.training.train_retriever import train_retriever_from_cfg
+
+    cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
+    ensure_data(cfg)
+    result = train_retriever_from_cfg(cfg)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
 
 
 def cmd_eval_retrieval(

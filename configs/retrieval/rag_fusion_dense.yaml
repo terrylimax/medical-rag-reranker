@@ -1,0 +1,8 @@
+name: rag_fusion_dense
+index_file: dense_index.pkl
+base_retriever: dense
+num_queries: 5
+cand_k: 50
+rrf_k: 60
+include_original: true
+fusion: rrf

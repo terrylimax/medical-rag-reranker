@@ -1,0 +1,12 @@
+name: bi_encoder
+index_file: medcpt_index.pkl
+query_model_name: ncbi/MedCPT-Query-Encoder
+doc_model_name: ncbi/MedCPT-Article-Encoder
+pooling: cls
+normalize: true
+query_max_length: 64
+doc_max_length: 256
+batch_size: 32
+local_files_only: false
+fusion: score
+rrf_k: 60
