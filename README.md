@@ -1109,14 +1109,25 @@ poetry run python -m medical_rag_reranker.commands retrieval_run --overrides "re
 poetry run python -m medical_rag_reranker.commands eval_retrieval --overrides "retrieval=hybrid"
 ```
 
-5. Compare baseline retrieval vs reranked retrieval:
+5. Build and evaluate the graph-guided MedQuAD benchmark:
+
+```bash
+poetry run python -m medical_rag_reranker.commands graph_benchmark
+poetry run python -m medical_rag_reranker.commands index --overrides "retrieval=graph_hybrid"
+poetry run python -m medical_rag_reranker.commands retrieval_run \
+  --overrides "retrieval=graph_hybrid,retrieval_run.queries=data/processed/graph_eval_queries.jsonl"
+poetry run python -m medical_rag_reranker.commands eval_retrieval \
+  --overrides "retrieval=graph_hybrid,run.eval_retrieval.eval_queries=data/processed/graph_eval_queries.jsonl,run.eval_retrieval.qrels=data/processed/graph_qrels.tsv"
+```
+
+6. Compare baseline retrieval vs reranked retrieval:
 
 ```bash
 poetry run python -m medical_rag_reranker.commands eval_reranked_retrieval \
   --overrides "retrieval=hybrid,retrieval_run.top_k=20,run.eval_reranked_retrieval.reranker_checkpoint_path=/absolute/path/to/reranker.ckpt"
 ```
 
-6. Run an end-to-end RAG demo (1 question by default, up to 5):
+7. Run an end-to-end RAG demo (1 question by default, up to 5):
 
 ```bash
 poetry run python -m medical_rag_reranker.commands rag_demo
@@ -1128,6 +1139,7 @@ Notes:
 
 - `medical_rag_reranker/retrieval/` and `configs/retrieval/` are already present in this repository.
 - A separate `medical_rag_reranker/evaluation/` package is not required for this baseline step.
+- Graph retrieval is implemented as a wrapper over the existing seed retriever. Use `retrieval=graph_bm25`, `retrieval=graph_hybrid`, or `retrieval=graph_hybrid_medcpt`.
 - `rag_demo` writes a detailed markdown report to `reports/rag_demo.md` and a JSONL dump to `reports/rag_demo.jsonl`.
 
 ### Tests

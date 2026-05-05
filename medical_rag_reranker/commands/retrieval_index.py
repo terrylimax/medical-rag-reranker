@@ -78,7 +78,9 @@ from pathlib import Path
 
 from omegaconf import DictConfig
 
+from medical_rag_reranker.graph.builder import build_medquad_graph
 from medical_rag_reranker.retrieval.bm25 import BM25Retriever
+from medical_rag_reranker.retrieval.graph_expanded import DEFAULT_RELATION_WEIGHTS
 from medical_rag_reranker.utils.progress import timed_stage
 
 
@@ -89,6 +91,8 @@ def _default_index_filename(retriever: str) -> str:
         return "dense_index.pkl"
     if retriever == "hybrid":
         return "hybrid_index.json"
+    if retriever.startswith("graph"):
+        return "graph_index.json"
     raise ValueError(f"Unknown retriever: {retriever}")
 
 
@@ -153,6 +157,43 @@ def _resolve_hybrid_out_paths(out_arg: str) -> tuple[Path, Path, Path]:
     return manifest, bm25_path, dense_path
 
 
+def _resolve_graph_out_paths(out_arg: str) -> tuple[Path, Path]:
+    """Return (graph_manifest_path, base_index_out)."""
+    out = Path(out_arg)
+
+    is_dir_hint = out_arg.endswith("/") or out_arg.endswith("\\")
+    if is_dir_hint or (out.exists() and out.is_dir()):
+        return out / "graph_index.json", out / "base"
+
+    if out.suffix:
+        manifest = out
+        stem = out.name
+        for suf in out.suffixes:
+            if stem.endswith(suf):
+                stem = stem[: -len(suf)]
+        return manifest, out.with_name(f"{stem}_base")
+
+    return out.with_suffix(".json"), out.with_name(f"{out.name}_base")
+
+
+def _infer_graph_base_retriever(retriever: str, base_retriever: str | None) -> str:
+    if base_retriever:
+        return base_retriever
+    if "hybrid" in retriever:
+        return "hybrid"
+    if "dense" in retriever:
+        return "dense"
+    return "bm25"
+
+
+def _relation_weights_from_config(value: object | None) -> dict[str, float]:
+    weights = dict(DEFAULT_RELATION_WEIGHTS)
+    if value:
+        for key, weight in dict(value).items():
+            weights[str(key)] = float(weight)
+    return weights
+
+
 def run_index(
     retriever: str,
     corpus: str,
@@ -172,8 +213,79 @@ def run_index(
     alpha: float = 0.5,
     cand_k: int = 50,
     rrf_k: int = 60,
+    graph_path: str | None = None,
+    base_retriever: str | None = None,
+    seed_k: int = 20,
+    expand_k: int = 50,
+    max_hops: int = 2,
+    base_weight: float = 0.7,
+    graph_weight: float = 0.3,
+    hop_decay: float = 0.65,
+    relation_weights: dict[str, float] | None = None,
 ) -> Path | tuple[Path, Path, Path]:
     """Build index(es) for a retriever and persist them to disk."""
+    if retriever.startswith("graph"):
+        graph_manifest, base_out = _resolve_graph_out_paths(out)
+        graph_manifest.parent.mkdir(parents=True, exist_ok=True)
+        base_out.parent.mkdir(parents=True, exist_ok=True)
+
+        if graph_path:
+            effective_graph_path = Path(graph_path)
+        else:
+            effective_graph_path = graph_manifest.parent / "medquad_graph.json"
+        if not effective_graph_path.exists():
+            with timed_stage("Build MedQuAD metadata graph"):
+                build_medquad_graph(corpus, effective_graph_path)
+
+        effective_base = _infer_graph_base_retriever(retriever, base_retriever)
+        base_index_result = run_index(
+            retriever=effective_base,
+            corpus=corpus,
+            out=str(base_out),
+            model=model,
+            query_model=query_model,
+            doc_model=doc_model,
+            dense_backend=dense_backend,
+            pooling=pooling,
+            normalize=normalize,
+            query_max_length=query_max_length,
+            doc_max_length=doc_max_length,
+            encode_batch_size=encode_batch_size,
+            max_seq_length=max_seq_length,
+            local_files_only=local_files_only,
+            fusion=fusion,
+            alpha=alpha,
+            cand_k=cand_k,
+            rrf_k=rrf_k,
+        )
+        base_index_path = (
+            base_index_result[0]
+            if isinstance(base_index_result, tuple)
+            else base_index_result
+        )
+
+        manifest = {
+            "format": "medical-rag-reranker.graph-expanded-index",
+            "version": 1,
+            "retriever": retriever,
+            "base_retriever": effective_base,
+            "base_index": _relpath(Path(base_index_path), graph_manifest.parent),
+            "graph_path": _relpath(effective_graph_path, graph_manifest.parent),
+            "seed_k": int(seed_k),
+            "expand_k": int(expand_k),
+            "max_hops": int(max_hops),
+            "base_weight": float(base_weight),
+            "graph_weight": float(graph_weight),
+            "hop_decay": float(hop_decay),
+            "relation_weights": _relation_weights_from_config(relation_weights),
+        }
+        with graph_manifest.open("w", encoding="utf-8") as f:
+            json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+        print(f"Saved graph retriever manifest to: {graph_manifest}")
+        print(f"Saved graph artifact to: {effective_graph_path}")
+        return graph_manifest
+
     if retriever == "hybrid":
         manifest_path, bm25_path, dense_path = _resolve_hybrid_out_paths(out)
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -323,6 +435,15 @@ def run_from_cfg(cfg: DictConfig) -> Path | tuple[Path, Path, Path]:
         alpha=float(run_cfg.alpha),
         cand_k=int(run_cfg.cand_k),
         rrf_k=int(run_cfg.rrf_k),
+        graph_path=str(retrieval_cfg.get("graph_path", "") or ""),
+        base_retriever=str(retrieval_cfg.get("base_retriever", "") or ""),
+        seed_k=int(retrieval_cfg.get("seed_k", 20)),
+        expand_k=int(retrieval_cfg.get("expand_k", 50)),
+        max_hops=int(retrieval_cfg.get("max_hops", 2)),
+        base_weight=float(retrieval_cfg.get("base_weight", 0.7)),
+        graph_weight=float(retrieval_cfg.get("graph_weight", 0.3)),
+        hop_decay=float(retrieval_cfg.get("hop_decay", 0.65)),
+        relation_weights=retrieval_cfg.get("relation_weights", None),
     )
 
 
@@ -338,7 +459,17 @@ def main():
         ),
     )
     p.add_argument(
-        "--retriever", choices=["bm25", "dense", "bi_encoder", "hybrid"], required=True
+        "--retriever",
+        choices=[
+            "bm25",
+            "dense",
+            "bi_encoder",
+            "hybrid",
+            "graph_bm25",
+            "graph_hybrid",
+            "graph_hybrid_medcpt",
+        ],
+        required=True,
     )
     p.add_argument("--corpus", required=True, help="path to corpus.jsonl")
     p.add_argument(
@@ -378,6 +509,11 @@ def main():
     p.add_argument("--alpha", type=float, default=0.5, help="only for hybrid")
     p.add_argument("--cand-k", type=int, default=50, help="only for hybrid")
     p.add_argument("--rrf-k", type=int, default=60, help="only for hybrid")
+    p.add_argument("--graph-path", default=None, help="only for graph retrievers")
+    p.add_argument("--base-retriever", default=None, help="only for graph retrievers")
+    p.add_argument("--seed-k", type=int, default=20, help="only for graph retrievers")
+    p.add_argument("--expand-k", type=int, default=50, help="only for graph retrievers")
+    p.add_argument("--max-hops", type=int, default=2, help="only for graph retrievers")
     args = p.parse_args()
 
     run_index(
@@ -398,6 +534,11 @@ def main():
         alpha=args.alpha,
         cand_k=args.cand_k,
         rrf_k=args.rrf_k,
+        graph_path=args.graph_path,
+        base_retriever=args.base_retriever,
+        seed_k=args.seed_k,
+        expand_k=args.expand_k,
+        max_hops=args.max_hops,
     )
 
 

@@ -30,6 +30,7 @@ def main() -> None:
     - python -m medical_rag_reranker.commands generate
     - python -m medical_rag_reranker.commands prep_data
     - python -m medical_rag_reranker.commands index
+    - python -m medical_rag_reranker.commands graph_benchmark
     - python -m medical_rag_reranker.commands prep_retriever_training_data
     - python -m medical_rag_reranker.commands train_retriever
     - python -m medical_rag_reranker.commands eval_retrieval
@@ -50,6 +51,7 @@ def main() -> None:
     - python -m medical_rag_reranker.commands generate --question "..."
     - python -m medical_rag_reranker.commands prep_data
     - python -m medical_rag_reranker.commands index --overrides "retrieval=hybrid"
+    - python -m medical_rag_reranker.commands graph_benchmark
     - python -m medical_rag_reranker.commands prep_retriever_training_data
     - python -m medical_rag_reranker.commands train_retriever
     - python -m medical_rag_reranker.commands eval_retrieval
@@ -71,6 +73,7 @@ def main() -> None:
             "generate": cmd_generate,
             "prep_data": cmd_prep_data,
             "index": cmd_index,
+            "graph_benchmark": cmd_graph_benchmark,
             "prep_retriever_training_data": cmd_prep_retriever_training_data,
             "train_retriever": cmd_train_retriever,
             "eval_retrieval": cmd_eval_retrieval,
@@ -323,6 +326,30 @@ def cmd_index(
     if isinstance(result, tuple):
         return tuple(str(p) for p in result)
     return str(result)
+
+
+def cmd_graph_benchmark(
+    config_dir: Optional[str] = None,
+    overrides: Optional[str] = None,
+) -> dict:
+    """Build graph multi-document benchmark from the configured processed split."""
+    from medical_rag_reranker.commands.graph_benchmark import (
+        build_graph_multidoc_benchmark,
+    )
+
+    cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
+    run_cfg = cfg.run.graph_benchmark
+    result = build_graph_multidoc_benchmark(
+        corpus_path=str(run_cfg.corpus),
+        splits_path=str(run_cfg.splits),
+        out_dir=str(run_cfg.out_dir),
+        split_name=str(run_cfg.split_name),
+        max_queries=int(run_cfg.max_queries),
+        seed=int(run_cfg.seed),
+        min_relevant_docs=int(run_cfg.min_relevant_docs),
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
 
 
 def cmd_prep_retriever_training_data(

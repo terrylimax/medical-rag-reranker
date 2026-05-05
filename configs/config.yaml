@@ -21,6 +21,7 @@ defaults:
   - run@run.retriever_training_data: retriever_training_data
   - run@run.train_retriever: train_retriever
   - run@run.eval_retrieval: eval_retrieval
+  - run@run.graph_benchmark: graph_benchmark
   - run@run.eval_generation: eval_generation
   - run@run.eval_reranked_retrieval: eval_reranked_retrieval
   - run@run.rag_demo: rag_demo

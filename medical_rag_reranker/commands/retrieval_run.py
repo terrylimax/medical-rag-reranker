@@ -60,6 +60,7 @@ from pathlib import Path
 from omegaconf import DictConfig
 
 from medical_rag_reranker.retrieval.bm25 import BM25Retriever
+from medical_rag_reranker.retrieval.loading import load_retriever
 from medical_rag_reranker.utils.progress import count_text_lines, progress
 
 
@@ -196,6 +197,8 @@ def _load_retriever(
     if retriever_name == "hybrid":
         manifest_path = _resolve_manifest_path(index_path)
         return _load_hybrid_from_manifest(manifest_path)
+    if retriever_name.startswith("graph"):
+        return load_retriever(retriever_name=retriever_name, index_path=index_path)
     if retriever_name == "rag_fusion" or retriever_name.startswith("rag_fusion_"):
         from medical_rag_reranker.retrieval.rag_fusion import RagFusionRetriever
 
@@ -338,7 +341,16 @@ def main():
     )
     p.add_argument(
         "--retriever",
-        choices=["bm25", "dense", "bi_encoder", "hybrid", "rag_fusion"],
+        choices=[
+            "bm25",
+            "dense",
+            "bi_encoder",
+            "hybrid",
+            "rag_fusion",
+            "graph_bm25",
+            "graph_hybrid",
+            "graph_hybrid_medcpt",
+        ],
         required=True,
     )
     p.add_argument(

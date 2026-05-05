@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import gzip
 import math
@@ -5,7 +7,10 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import List
 
-import numpy as np
+try:  # pragma: no cover - environment dependent
+    import numpy as np
+except Exception:  # pragma: no cover - dependency-light fallback
+    np = None
 
 from medical_rag_reranker.utils.progress import count_text_lines, progress
 
@@ -20,8 +25,13 @@ class _FallbackBM25Okapi:
         self.k1 = float(k1)
         self.b = float(b)
         self.N = len(corpus)
-        self.doc_lens = np.array([len(doc) for doc in corpus], dtype=np.float32)
-        self.avgdl = float(self.doc_lens.mean()) if self.N else 0.0
+        doc_lens = [len(doc) for doc in corpus]
+        if np is not None:
+            self.doc_lens = np.array(doc_lens, dtype=np.float32)
+            self.avgdl = float(self.doc_lens.mean()) if self.N else 0.0
+        else:
+            self.doc_lens = doc_lens
+            self.avgdl = sum(doc_lens) / float(self.N) if self.N else 0.0
         self.doc_tf = [Counter(doc) for doc in corpus]
 
         df: dict[str, int] = {}
@@ -35,9 +45,11 @@ class _FallbackBM25Okapi:
 
     def get_scores(self, query_tokens: List[str]) -> np.ndarray:
         if self.N == 0:
-            return np.zeros(0, dtype=np.float32)
+            return np.zeros(0, dtype=np.float32) if np is not None else []
 
-        scores = np.zeros(self.N, dtype=np.float32)
+        scores = (
+            np.zeros(self.N, dtype=np.float32) if np is not None else [0.0] * self.N
+        )
         for qi in query_tokens:
             idf = self.idf.get(qi, 0.0)
             if idf == 0.0:
@@ -108,12 +120,13 @@ class BM25Retriever(Retriever):
         if self.bm25 is None:
             if not self.corpus_path:
                 raise ValueError(
-                    "BM25Retriever is not indexed yet. Call index(corpus_path) or load() from a saved retriever."
+                    "BM25Retriever is not indexed yet. Call index(corpus_path) "
+                    "or load() from a saved retriever."
                 )
             self.index(self.corpus_path)
 
         q = simple_tokenize(query)
-        scores = self.bm25.get_scores(q)  # np.array
+        scores = self.bm25.get_scores(q)
         # top_k indices
         if self.doc_ids is None:
             raise ValueError(
@@ -124,14 +137,23 @@ class BM25Retriever(Retriever):
         if k <= 0:
             return []
 
-        idx = np.argpartition(scores, -k)[-k:]
-        idx = idx[np.argsort(scores[idx])[::-1]]
-        return [ScoredDoc(self.doc_ids[i], float(scores[i])) for i in idx]
+        if np is not None:
+            idx = np.argpartition(scores, -k)[-k:]
+            idx = idx[np.argsort(scores[idx])[::-1]]
+            return [ScoredDoc(self.doc_ids[i], float(scores[i])) for i in idx]
+
+        ranked = sorted(
+            enumerate(scores),
+            key=lambda item: float(item[1]),
+            reverse=True,
+        )[:k]
+        return [ScoredDoc(self.doc_ids[i], float(score)) for i, score in ranked]
 
     def save(self, path: str) -> None:
         if not self.corpus_path:
             raise ValueError(
-                "BM25Retriever has no corpus_path. Call index(corpus_path) first so the retriever can be rebuilt."
+                "BM25Retriever has no corpus_path. Call index(corpus_path) "
+                "first so the retriever can be rebuilt."
             )
 
         payload = {

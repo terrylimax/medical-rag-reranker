@@ -16,6 +16,8 @@ from transformers import (
     set_seed,
 )
 
+from medical_rag_reranker.retrieval.loading import load_retriever
+
 CITATION_PATTERN = re.compile(r"\[([^\[\]]+)\]")
 
 
@@ -144,6 +146,8 @@ def _load_retriever(retriever_name: str, index_path: str):
     if retriever_name == "hybrid":
         manifest_path = _resolve_manifest_path(index_path)
         return _load_hybrid_from_manifest(manifest_path)
+    if retriever_name.startswith("graph"):
+        return load_retriever(retriever_name=retriever_name, index_path=index_path)
     raise ValueError(f"Unsupported retriever: {retriever_name}")
 
 
