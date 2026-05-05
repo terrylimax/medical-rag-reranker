@@ -114,11 +114,44 @@ def summarize_generation_evaluations(
     if not rows:
         raise ValueError("Cannot summarize empty generation evaluation rows.")
 
-    metrics = [evaluate_generation_result(row) for row in rows]
-    keys = metrics[0].keys()
-    summary = {
-        f"avg_{key}": float(mean(float(item[key]) for item in metrics)) for key in keys
-    }
+    metrics = [
+        row["evaluation"]
+        if isinstance(row.get("evaluation"), dict)
+        else evaluate_generation_result(row)
+        for row in rows
+    ]
+    numeric_keys = sorted(
+        {
+            key
+            for item in metrics
+            for key, value in item.items()
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        }
+    )
+    summary = {}
+    for key in numeric_keys:
+        values = [
+            float(item[key])
+            for item in metrics
+            if isinstance(item.get(key), (int, float))
+            and not isinstance(item.get(key), bool)
+        ]
+        if values:
+            summary[f"avg_{key}"] = float(mean(values))
+
+    verdicts = [
+        str(item.get("verdict", "")).strip().lower()
+        for item in metrics
+        if item.get("verdict") is not None
+    ]
+    if verdicts:
+        summary["pass_rate"] = float(
+            mean(1.0 if verdict == "pass" else 0.0 for verdict in verdicts)
+        )
+        summary["fail_rate"] = float(
+            mean(1.0 if verdict == "fail" else 0.0 for verdict in verdicts)
+        )
+
     summary["num_examples"] = float(len(rows))
     summary["reranker_enabled_rate"] = float(
         mean(1.0 if bool(row.get("reranker_enabled")) else 0.0 for row in rows)
