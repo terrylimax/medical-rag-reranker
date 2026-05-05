@@ -1,6 +1,18 @@
 queries_path: ${run.prep_data.out_dir}/eval_queries.jsonl
 examples_limit: 20
 judge_mode: heuristic
+judge_backend: local_openai_compatible
+
+# Local vLLM/OpenAI-compatible judge backend. The RAG answer generator remains
+# `configs/generation/generation.yaml`; these settings are only for evaluation.
+judge_base_url: ${oc.env:LLM_JUDGE_BASE_URL,http://localhost:8000/v1}
+judge_model: ${oc.env:LLM_JUDGE_MODEL,mistralai/Mistral-7B-Instruct-v0.3}
+judge_api_key: ${oc.env:LLM_JUDGE_API_KEY,EMPTY}
+judge_temperature: 0.0
+judge_timeout_seconds: 60
+judge_max_tokens: 512
+judge_max_context_docs: 5
+judge_max_doc_chars: 1500
 
 generation_report_path: reports/eval_generation_examples.md
 generation_results_jsonl_path: reports/eval_generation_raw.jsonl
