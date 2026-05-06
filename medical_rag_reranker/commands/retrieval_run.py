@@ -59,24 +59,8 @@ from pathlib import Path
 
 from omegaconf import DictConfig
 
-from medical_rag_reranker.retrieval.bm25 import BM25Retriever
 from medical_rag_reranker.retrieval.loading import load_retriever
 from medical_rag_reranker.utils.progress import count_text_lines, progress
-
-
-def _resolve_manifest_path(index_arg: str) -> Path:
-    """Resolve `--index` into a hybrid manifest path.
-
-    If `index_arg` is a directory, expects `hybrid_index.json` inside it; otherwise
-    treats `index_arg` as a direct path to the manifest.
-    """
-    p = Path(index_arg)
-    if p.exists() and p.is_dir():
-        candidate = p / "hybrid_index.json"
-        if not candidate.exists():
-            raise FileNotFoundError(f"Expected hybrid_index.json inside directory: {p}")
-        return candidate
-    return p
 
 
 def _resolve_query_text(query_obj: dict) -> str:
@@ -102,128 +86,16 @@ def _resolve_query_id(query_obj: dict) -> str:
     return str(qid)
 
 
-def _load_hybrid_from_manifest(manifest_path: Path):
-    """Load a `HybridRetriever` from a hybrid manifest JSON.
-
-    The manifest is expected to reference saved bm25/dense indices (paths may be
-    relative to the manifest location) and store hybrid parameters like `alpha`
-    and `cand_k`.
-    """
-    try:
-        from medical_rag_reranker.retrieval.hybrid import HybridRetriever
-    except Exception as e:
-        raise RuntimeError(
-            "Hybrid retriever dependencies are missing. "
-            "Install retrieval dependencies or switch to retrieval=bm25."
-        ) from e
-
-    with open(manifest_path, "r", encoding="utf-8") as f:
-        m = json.load(f)
-
-    if m.get("format") != "medical-rag-reranker.hybrid-index":
-        raise ValueError("Unsupported hybrid manifest format.")
-
-    base_dir = manifest_path.parent
-    bm25_index = Path(m["bm25_index"])
-    dense_index = Path(m["dense_index"])
-
-    # Allow relative paths in the manifest.
-    if not bm25_index.is_absolute():
-        bm25_index = base_dir / bm25_index
-    if not dense_index.is_absolute():
-        dense_index = base_dir / dense_index
-
-    bm25 = BM25Retriever.load(str(bm25_index))
-    dense_backend = str(m.get("dense_backend", "dense"))
-    if dense_backend == "bi_encoder":
-        from medical_rag_reranker.retrieval.bi_encoder import BiEncoderRetriever
-
-        dense = BiEncoderRetriever.load(str(dense_index))
-    elif dense_backend == "dense":
-        from medical_rag_reranker.retrieval.dense import DenseRetriever
-
-        dense = DenseRetriever.load(str(dense_index))
-    else:
-        raise ValueError(f"Unsupported hybrid dense_backend: {dense_backend!r}")
-
-    return HybridRetriever(
-        bm25=bm25,
-        dense=dense,
-        fusion=str(m.get("fusion", "score")),
-        alpha=float(m.get("alpha", 0.5)),
-        cand_k=int(m.get("cand_k", 50)),
-        rrf_k=int(m.get("rrf_k", 60)),
-    )
-
-
-def _get_cfg_value(cfg: DictConfig | None, key: str, default):
-    if cfg is None:
-        return default
-    value = cfg.get(key)
-    return default if value is None else value
-
-
-def _infer_rag_fusion_base(retriever_name: str) -> str:
-    name = str(retriever_name)
-    if name.endswith("_bm25"):
-        return "bm25"
-    if name.endswith("_dense"):
-        return "dense"
-    if name.endswith("_hybrid"):
-        return "hybrid"
-    return "dense"
-
-
 def _load_retriever(
     retriever_name: str,
     index_path: str,
     retrieval_cfg: DictConfig | None = None,
 ):
-    if retriever_name == "bm25":
-        return BM25Retriever.load(index_path)
-    if retriever_name == "dense":
-        try:
-            from medical_rag_reranker.retrieval.dense import DenseRetriever
-        except Exception as e:
-            raise RuntimeError(
-                "Dense retriever requires `sentence-transformers`. "
-                "Install dependencies or switch to retrieval=bm25."
-            ) from e
-        return DenseRetriever.load(index_path)
-    if retriever_name == "bi_encoder":
-        from medical_rag_reranker.retrieval.bi_encoder import BiEncoderRetriever
-
-        return BiEncoderRetriever.load(index_path)
-    if retriever_name == "hybrid":
-        manifest_path = _resolve_manifest_path(index_path)
-        return _load_hybrid_from_manifest(manifest_path)
-    if retriever_name.startswith("graph"):
-        return load_retriever(retriever_name=retriever_name, index_path=index_path)
-    if retriever_name == "rag_fusion" or retriever_name.startswith("rag_fusion_"):
-        from medical_rag_reranker.retrieval.rag_fusion import RagFusionRetriever
-
-        base_name = str(
-            _get_cfg_value(
-                retrieval_cfg,
-                "base_retriever",
-                _infer_rag_fusion_base(retriever_name),
-            )
-        )
-        base = _load_retriever(
-            retriever_name=base_name,
-            index_path=index_path,
-            retrieval_cfg=None,
-        )
-        return RagFusionRetriever(
-            base=base,
-            num_queries=int(_get_cfg_value(retrieval_cfg, "num_queries", 5)),
-            cand_k=int(_get_cfg_value(retrieval_cfg, "cand_k", 50)),
-            rrf_k=int(_get_cfg_value(retrieval_cfg, "rrf_k", 60)),
-            include_original=bool(
-                _get_cfg_value(retrieval_cfg, "include_original", True)
-            ),
-        )
-    raise ValueError(f"Unsupported retriever: {retriever_name}")
+    return load_retriever(
+        retriever_name=retriever_name,
+        index_path=index_path,
+        retrieval_cfg=retrieval_cfg,
+    )
 
 
 def run_retrieval(
@@ -347,6 +219,9 @@ def main():
             "bi_encoder",
             "hybrid",
             "rag_fusion",
+            "rag_fusion_bm25",
+            "rag_fusion_dense",
+            "rag_fusion_medcpt_pilot",
             "graph_bm25",
             "graph_hybrid",
             "graph_hybrid_medcpt",

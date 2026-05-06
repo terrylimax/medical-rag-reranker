@@ -105,7 +105,49 @@ def _load_graph_from_manifest(manifest_path: Path):
     )
 
 
-def load_retriever(retriever_name: str, index_path: str):
+def _get_cfg_value(cfg: Any | None, key: str, default: Any) -> Any:
+    if cfg is None:
+        return default
+    value = cfg.get(key)
+    return default if value is None else value
+
+
+def _infer_rag_fusion_base(retriever_name: str) -> str:
+    name = str(retriever_name)
+    if name.endswith("_bm25"):
+        return "bm25"
+    if name.endswith("_dense"):
+        return "dense"
+    if name.endswith("_hybrid"):
+        return "hybrid"
+    return "dense"
+
+
+def _load_rag_fusion(retriever_name: str, index_path: str, retrieval_cfg: Any | None):
+    from medical_rag_reranker.retrieval.rag_fusion import RagFusionRetriever
+
+    base_name = str(
+        _get_cfg_value(
+            retrieval_cfg,
+            "base_retriever",
+            _infer_rag_fusion_base(retriever_name),
+        )
+    )
+    base = load_retriever(base_name, index_path)
+    return RagFusionRetriever(
+        base=base,
+        num_queries=int(_get_cfg_value(retrieval_cfg, "num_queries", 5)),
+        cand_k=int(_get_cfg_value(retrieval_cfg, "cand_k", 50)),
+        rrf_k=int(_get_cfg_value(retrieval_cfg, "rrf_k", 60)),
+        include_original=bool(_get_cfg_value(retrieval_cfg, "include_original", True)),
+    )
+
+
+def load_retriever(
+    retriever_name: str,
+    index_path: str,
+    retrieval_cfg: Any | None = None,
+):
     if retriever_name == "bm25":
         return BM25Retriever.load(index_path)
     if retriever_name == "dense":
@@ -127,4 +169,6 @@ def load_retriever(retriever_name: str, index_path: str):
     if retriever_name.startswith("graph"):
         manifest_path = _resolve_manifest_path(index_path, "graph_index.json")
         return _load_graph_from_manifest(manifest_path)
+    if retriever_name == "rag_fusion" or retriever_name.startswith("rag_fusion_"):
+        return _load_rag_fusion(retriever_name, index_path, retrieval_cfg)
     raise ValueError(f"Unsupported retriever: {retriever_name}")

@@ -229,10 +229,11 @@ def run_index(
         graph_manifest.parent.mkdir(parents=True, exist_ok=True)
         base_out.parent.mkdir(parents=True, exist_ok=True)
 
-        if graph_path:
-            effective_graph_path = Path(graph_path)
-        else:
-            effective_graph_path = graph_manifest.parent / "medquad_graph.json"
+        effective_graph_path = (
+            Path(graph_path)
+            if graph_path
+            else graph_manifest.parent / "medquad_graph.json"
+        )
         if not effective_graph_path.exists():
             with timed_stage("Build MedQuAD metadata graph"):
                 build_medquad_graph(corpus, effective_graph_path)
@@ -443,7 +444,7 @@ def run_from_cfg(cfg: DictConfig) -> Path | tuple[Path, Path, Path]:
         base_weight=float(retrieval_cfg.get("base_weight", 0.7)),
         graph_weight=float(retrieval_cfg.get("graph_weight", 0.3)),
         hop_decay=float(retrieval_cfg.get("hop_decay", 0.65)),
-        relation_weights=retrieval_cfg.get("relation_weights", None),
+        relation_weights=retrieval_cfg.get("relation_weights"),
     )
 
 
@@ -514,6 +515,15 @@ def main():
     p.add_argument("--seed-k", type=int, default=20, help="only for graph retrievers")
     p.add_argument("--expand-k", type=int, default=50, help="only for graph retrievers")
     p.add_argument("--max-hops", type=int, default=2, help="only for graph retrievers")
+    p.add_argument(
+        "--base-weight", type=float, default=0.7, help="only for graph retrievers"
+    )
+    p.add_argument(
+        "--graph-weight", type=float, default=0.3, help="only for graph retrievers"
+    )
+    p.add_argument(
+        "--hop-decay", type=float, default=0.65, help="only for graph retrievers"
+    )
     args = p.parse_args()
 
     run_index(
@@ -539,6 +549,9 @@ def main():
         seed_k=args.seed_k,
         expand_k=args.expand_k,
         max_hops=args.max_hops,
+        base_weight=args.base_weight,
+        graph_weight=args.graph_weight,
+        hop_decay=args.hop_decay,
     )
 
 

@@ -3,51 +3,138 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Medical RAG Gateway</title>
-    <link rel="stylesheet" href="/assets/styles.css" />
+    <title>Medical RAG Assistant</title>
+    <link
+      rel="stylesheet"
+      href="/assets/styles.css?v=frontend-chat-ui-20260506-retrieval-status"
+    />
+    <script
+      src="/assets/app.js?v=frontend-chat-ui-20260506-retrieval-status"
+      defer
+    ></script>
   </head>
   <body>
-    <main class="shell">
-      <section class="hero">
-        <p class="eyebrow">Medical RAG Reranker</p>
-        <h1>
-          Nginx fronts the platform, FastAPI serves the API, Celery handles
-          jobs.
-        </h1>
-        <p class="lede">
-          This static page is served by a dedicated container. API traffic is
-          routed through nginx to the internal ASGI application under
-          <code>/api</code>.
-        </p>
-        <div class="actions">
-          <a href="/api/health">Check API health</a>
-          <a href="/api/docs">Open API docs</a>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Medical RAG Assistant">
+          <span class="brand-mark" aria-hidden="true">MR</span>
+          <span>
+            <span class="brand-kicker">Medical RAG</span>
+            <span class="brand-title">Assistant</span>
+          </span>
+        </a>
+        <div class="topbar-actions">
+          <span
+            id="apiStatus"
+            class="status-pill status-muted"
+            aria-live="polite"
+          >
+            Checking API
+          </span>
+          <a class="docs-link" href="/api/docs">API docs</a>
         </div>
-      </section>
+      </header>
 
-      <section class="grid">
-        <article class="card">
-          <h2>Gateway</h2>
-          <p>
-            Public traffic enters nginx. It proxies <code>/api/*</code> to the
-            FastAPI app and everything else to this static site.
-          </p>
-        </article>
-        <article class="card">
-          <h2>Application</h2>
-          <p>
-            The API runs behind nginx on an internal Docker network via an ASGI
-            server in production mode.
-          </p>
-        </article>
-        <article class="card">
-          <h2>Background jobs</h2>
-          <p>
-            Requests create jobs in PostgreSQL and publish them to RabbitMQ.
-            Celery workers consume and process them asynchronously.
-          </p>
-        </article>
-      </section>
-    </main>
+      <main class="workspace">
+        <section class="chat-panel" aria-label="Medical question chat">
+          <ol id="messages" class="messages" aria-live="polite">
+            <li class="message assistant-message">
+              <div class="avatar" aria-hidden="true">RAG</div>
+              <div class="bubble">
+                <p>
+                  Ask a medical question. Answers are grounded in retrieved
+                  passages when the backend index is available.
+                </p>
+                <p class="safety-note">
+                  Educational support only; diagnosis and treatment decisions
+                  belong with a qualified clinician.
+                </p>
+              </div>
+            </li>
+          </ol>
+
+          <div class="prompt-toolbar">
+            <div class="quick-prompts" aria-label="Example prompts">
+              <button type="button" data-prompt="What is metformin used for?">
+                Metformin
+              </button>
+              <button
+                type="button"
+                data-prompt="What are common asthma rescue inhalers used for?"
+              >
+                Asthma
+              </button>
+              <button
+                type="button"
+                data-prompt="When should high blood pressure be discussed with a doctor?"
+              >
+                Blood pressure
+              </button>
+            </div>
+
+            <div class="retrieval-control">
+              <label for="retrievalSelect">Retrieval</label>
+              <select id="retrievalSelect" name="retrieval_method">
+                <option value="bm25">BM25</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="graph_bm25">Graph</option>
+                <option value="graph_hybrid">Graph Hybrid</option>
+                <option value="graph_hybrid_medcpt">Graph Hybrid MedCPT</option>
+              </select>
+            </div>
+          </div>
+
+          <form id="chatForm" class="composer">
+            <label class="visually-hidden" for="questionInput">
+              Medical question
+            </label>
+            <textarea
+              id="questionInput"
+              name="question"
+              rows="1"
+              maxlength="1200"
+              placeholder="Ask about a medication, symptom, condition, or clinical term..."
+              required
+            ></textarea>
+            <button id="sendButton" type="submit">Send</button>
+          </form>
+        </section>
+
+        <aside class="side-panel" aria-label="Answer evidence">
+          <section class="inspector-section" aria-labelledby="stateTitle">
+            <h2 id="stateTitle">Answer State</h2>
+            <dl class="state-grid">
+              <div>
+                <dt>Status</dt>
+                <dd id="jobStatus">Idle</dd>
+              </div>
+              <div>
+                <dt>Job</dt>
+                <dd id="jobId">None</dd>
+              </div>
+              <div>
+                <dt>Citations</dt>
+                <dd id="citationCount">0</dd>
+              </div>
+              <div>
+                <dt>Method</dt>
+                <dd id="retrievalMethod">BM25</dd>
+              </div>
+              <div>
+                <dt>Latency</dt>
+                <dd id="latencyValue">-</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="inspector-section" aria-labelledby="sourcesTitle">
+            <h2 id="sourcesTitle">Retrieved Sources</h2>
+            <div id="sourcesList" class="sources-list">
+              <p class="empty-state">No sources selected.</p>
+            </div>
+          </section>
+        </aside>
+      </main>
+    </div>
   </body>
 </html>

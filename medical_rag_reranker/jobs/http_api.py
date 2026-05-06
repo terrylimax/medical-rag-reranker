@@ -10,6 +10,10 @@ from pydantic import BaseModel
 import uvicorn
 
 from medical_rag_reranker.jobs.bootstrap import JobRuntime, build_job_runtime
+from medical_rag_reranker.jobs.service import (
+    normalize_retrieval_method,
+    retrieval_method_options,
+)
 
 
 def _as_bool(value: object, *, default: bool = False) -> bool:
@@ -41,7 +45,27 @@ class JobsApiContext:
 
 class SubmitJobPayload(BaseModel):
     question: str
+    retrieval_method: str | None = None
     metadata: dict[str, Any] | None = None
+
+
+def _retrieval_label(method: str) -> str:
+    labels = {
+        "bge_m3": "BGE-M3",
+        "bm25": "BM25",
+        "dense": "Dense",
+        "graph_bm25": "Graph",
+        "graph_hybrid": "Graph Hybrid",
+        "graph_hybrid_medcpt": "Graph Hybrid MedCPT",
+        "hybrid": "Hybrid",
+        "hybrid_bge_m3": "Hybrid BGE-M3",
+        "hybrid_medcpt": "Hybrid MedCPT",
+        "medcpt": "MedCPT",
+        "rag_fusion_bm25": "RAG Fusion BM25",
+        "rag_fusion_dense": "RAG Fusion Dense",
+        "rag_fusion_medcpt_pilot": "RAG Fusion MedCPT",
+    }
+    return labels.get(method, method.replace("_", " ").title())
 
 
 def create_jobs_api(cfg: DictConfig) -> FastAPI:
@@ -60,6 +84,21 @@ def create_jobs_api(cfg: DictConfig) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/retrieval-methods")
+    def retrieval_methods() -> dict[str, Any]:
+        methods = retrieval_method_options(cfg)
+        values = [str(method["value"]) for method in methods]
+        return {
+            "default": "bm25" if "bm25" in values else values[0],
+            "methods": [
+                {
+                    **method,
+                    "label": _retrieval_label(str(method["value"])),
+                }
+                for method in methods
+            ],
+        }
+
     @app.post("/jobs")
     def submit_job(payload: SubmitJobPayload):
         question = str(payload.question).strip()
@@ -69,9 +108,22 @@ def create_jobs_api(cfg: DictConfig) -> FastAPI:
                 content={"error": "`question` must be a non-empty string."},
             )
 
+        metadata = dict(payload.metadata or {})
+        requested_retrieval = (
+            payload.retrieval_method
+            or metadata.get("retrieval_method")
+            or metadata.get("retrieval")
+        )
+        try:
+            retrieval_method = normalize_retrieval_method(requested_retrieval)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+        if retrieval_method is not None:
+            metadata["retrieval_method"] = retrieval_method
+
         service = context.runtime.service
         dispatcher = context.runtime.dispatcher
-        job = service.create_job(question=question, metadata=payload.metadata)
+        job = service.create_job(question=question, metadata=metadata)
 
         dispatched = False
         if context.auto_dispatch:
