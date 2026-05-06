@@ -73,84 +73,6 @@ def _as_bool(value: Any, *, default: bool = False) -> bool:
     raise ValueError(f"Cannot parse boolean value from: {value!r}")
 
 
-def _resolve_manifest_path(index_arg: str) -> Path:
-    p = Path(index_arg)
-    if p.exists() and p.is_dir():
-        candidate = p / "hybrid_index.json"
-        if not candidate.exists():
-            raise FileNotFoundError(f"Expected hybrid_index.json inside directory: {p}")
-        return candidate
-    return p
-
-
-def _load_hybrid_from_manifest(manifest_path: Path):
-    from medical_rag_reranker.retrieval.bm25 import BM25Retriever
-    from medical_rag_reranker.retrieval.hybrid import HybridRetriever
-
-    with open(manifest_path, "r", encoding="utf-8") as f:
-        m = json.load(f)
-
-    if m.get("format") != "medical-rag-reranker.hybrid-index":
-        raise ValueError("Unsupported hybrid manifest format.")
-
-    base_dir = manifest_path.parent
-    bm25_index = Path(m["bm25_index"])
-    dense_index = Path(m["dense_index"])
-
-    if not bm25_index.is_absolute():
-        bm25_index = base_dir / bm25_index
-    if not dense_index.is_absolute():
-        dense_index = base_dir / dense_index
-
-    bm25 = BM25Retriever.load(str(bm25_index))
-    dense_backend = str(m.get("dense_backend", "dense"))
-    if dense_backend == "bi_encoder":
-        from medical_rag_reranker.retrieval.bi_encoder import BiEncoderRetriever
-
-        dense = BiEncoderRetriever.load(str(dense_index))
-    elif dense_backend == "dense":
-        from medical_rag_reranker.retrieval.dense import DenseRetriever
-
-        dense = DenseRetriever.load(str(dense_index))
-    else:
-        raise ValueError(f"Unsupported hybrid dense_backend: {dense_backend!r}")
-
-    return HybridRetriever(
-        bm25=bm25,
-        dense=dense,
-        fusion=str(m.get("fusion", "score")),
-        alpha=float(m.get("alpha", 0.5)),
-        cand_k=int(m.get("cand_k", 50)),
-        rrf_k=int(m.get("rrf_k", 60)),
-    )
-
-
-def _load_retriever(retriever_name: str, index_path: str):
-    if retriever_name == "bm25":
-        from medical_rag_reranker.retrieval.bm25 import BM25Retriever
-
-        return BM25Retriever.load(index_path)
-    if retriever_name == "dense":
-        try:
-            from medical_rag_reranker.retrieval.dense import DenseRetriever
-        except Exception as e:
-            raise RuntimeError(
-                "Dense retriever dependencies are missing. "
-                "Install `sentence-transformers` to use retrieval=dense."
-            ) from e
-        return DenseRetriever.load(index_path)
-    if retriever_name == "bi_encoder":
-        from medical_rag_reranker.retrieval.bi_encoder import BiEncoderRetriever
-
-        return BiEncoderRetriever.load(index_path)
-    if retriever_name == "hybrid":
-        manifest_path = _resolve_manifest_path(index_path)
-        return _load_hybrid_from_manifest(manifest_path)
-    if retriever_name.startswith("graph"):
-        return load_retriever(retriever_name=retriever_name, index_path=index_path)
-    raise ValueError(f"Unsupported retriever: {retriever_name}")
-
-
 def _load_docstore(corpus_path: str) -> dict[str, dict[str, Any]]:
     """Load corpus rows into a `{doc_id: row}` map used during generation."""
     path = Path(corpus_path)
@@ -609,9 +531,10 @@ def generate_from_cfg(
     generation_seed = int(getattr(cfg.generation, "seed", 42))
     set_seed(generation_seed)
 
-    retriever = _load_retriever(
+    retriever = load_retriever(
         retriever_name=str(cfg.retrieval.name),
         index_path=str(cfg.generation.index),
+        retrieval_cfg=cfg.retrieval,
     )
     docstore = _load_docstore(str(cfg.generation.corpus_path))
     use_reranker = _as_bool(getattr(cfg.generation, "use_reranker", False))

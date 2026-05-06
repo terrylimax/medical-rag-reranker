@@ -417,6 +417,7 @@ def main():
     print("DONE")
     print(f"- {result['qa_path']} ({result['num_qa_rows']} rows)")
     print(f"- {result['corpus_path']} ({result['num_corpus_docs']} docs)")
+    print(f"- {result['graph_path']}")
     print(f"- {result['splits_path']}")
     print(f"- {result['eval_queries_path']} " f"({result['num_eval_queries']} queries)")
     print(f"- {result['qrels_path']} ({result['num_qrels']} lines)")

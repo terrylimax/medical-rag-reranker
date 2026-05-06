@@ -29,6 +29,7 @@ def main() -> None:
     - python -m medical_rag_reranker.commands infer
     - python -m medical_rag_reranker.commands generate
     - python -m medical_rag_reranker.commands prep_data
+    - python -m medical_rag_reranker.commands graph_benchmark
     - python -m medical_rag_reranker.commands index
     - python -m medical_rag_reranker.commands graph_benchmark
     - python -m medical_rag_reranker.commands prep_retriever_training_data
@@ -50,6 +51,7 @@ def main() -> None:
     - python -m medical_rag_reranker.commands infer --query "..." --document "..."
     - python -m medical_rag_reranker.commands generate --question "..."
     - python -m medical_rag_reranker.commands prep_data
+    - python -m medical_rag_reranker.commands graph_benchmark
     - python -m medical_rag_reranker.commands index --overrides "retrieval=hybrid"
     - python -m medical_rag_reranker.commands graph_benchmark
     - python -m medical_rag_reranker.commands prep_retriever_training_data
@@ -72,8 +74,8 @@ def main() -> None:
             "retrieval_run": cmd_retrieval_run,
             "generate": cmd_generate,
             "prep_data": cmd_prep_data,
-            "index": cmd_index,
             "graph_benchmark": cmd_graph_benchmark,
+            "index": cmd_index,
             "prep_retriever_training_data": cmd_prep_retriever_training_data,
             "train_retriever": cmd_train_retriever,
             "eval_retrieval": cmd_eval_retrieval,
