@@ -94,6 +94,20 @@ services:
       JOBS_BROKER_TASK_NAME: medical_rag_reranker.jobs.tasks.process_inference_job
       JOBS_API_PORT: "8000"
       JOBS_API_WORKERS: ${JOBS_API_WORKERS:-2}
+      RETRIEVAL_VECTOR_BACKEND: ${RETRIEVAL_VECTOR_BACKEND:-local}
+      RETRIEVAL_DENSE_BACKEND: ${RETRIEVAL_DENSE_BACKEND:-dense}
+      QDRANT_URL: ${QDRANT_URL:-http://localhost:6333}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-medical_rag_docs}
+      QDRANT_TIMEOUT_SECONDS: ${QDRANT_TIMEOUT_SECONDS:-60}
+      GENERATION_CORPUS_PATH: ${GENERATION_CORPUS_PATH:-/app/data/processed/corpus.jsonl}
+      GENERATION_INDEX_PATH: ${GENERATION_INDEX_PATH:-/app/artifacts/bm25_index.json.gz}
+      GENERATION_BACKEND: ${GENERATION_BACKEND:-local}
+      GENERATION_LLM_MODEL_NAME: ${GENERATION_LLM_MODEL_NAME:-google/flan-t5-small}
+      VLLM_BASE_URL: ${VLLM_BASE_URL:-}
+      VLLM_API_KEY: ${VLLM_API_KEY:-}
+      VLLM_API_TYPE: ${VLLM_API_TYPE:-chat}
+      VLLM_TIMEOUT_SECONDS: ${VLLM_TIMEOUT_SECONDS:-120}
     volumes:
       - ./data:/app/data
       - ./artifacts:/app/artifacts
@@ -132,6 +146,20 @@ services:
       JOBS_BROKER_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672//
       JOBS_BROKER_QUEUE: inference_jobs
       JOBS_BROKER_TASK_NAME: medical_rag_reranker.jobs.tasks.process_inference_job
+      RETRIEVAL_VECTOR_BACKEND: ${RETRIEVAL_VECTOR_BACKEND:-local}
+      RETRIEVAL_DENSE_BACKEND: ${RETRIEVAL_DENSE_BACKEND:-dense}
+      QDRANT_URL: ${QDRANT_URL:-http://localhost:6333}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-medical_rag_docs}
+      QDRANT_TIMEOUT_SECONDS: ${QDRANT_TIMEOUT_SECONDS:-60}
+      GENERATION_CORPUS_PATH: ${GENERATION_CORPUS_PATH:-/app/data/processed/corpus.jsonl}
+      GENERATION_INDEX_PATH: ${GENERATION_INDEX_PATH:-/app/artifacts/bm25_index.json.gz}
+      GENERATION_BACKEND: ${GENERATION_BACKEND:-local}
+      GENERATION_LLM_MODEL_NAME: ${GENERATION_LLM_MODEL_NAME:-google/flan-t5-small}
+      VLLM_BASE_URL: ${VLLM_BASE_URL:-}
+      VLLM_API_KEY: ${VLLM_API_KEY:-}
+      VLLM_API_TYPE: ${VLLM_API_TYPE:-chat}
+      VLLM_TIMEOUT_SECONDS: ${VLLM_TIMEOUT_SECONDS:-120}
     volumes:
       - ./data:/app/data
       - ./artifacts:/app/artifacts

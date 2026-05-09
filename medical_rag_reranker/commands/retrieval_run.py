@@ -57,7 +57,7 @@ import json
 import time
 from pathlib import Path
 
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from medical_rag_reranker.retrieval.loading import load_retriever
 from medical_rag_reranker.utils.progress import count_text_lines, progress
@@ -240,6 +240,12 @@ def main():
     p.add_argument("--out", required=True, help="path to run.trec")
     p.add_argument("--top_k", type=int, default=10)
     p.add_argument("--run_name", default="baseline")
+    p.add_argument(
+        "--vector-backend",
+        choices=["local", "qdrant"],
+        default="local",
+        help="only for dense-compatible retrieval",
+    )
     args = p.parse_args()
 
     out = run_retrieval(
@@ -249,6 +255,7 @@ def main():
         out_path=args.out,
         top_k=args.top_k,
         run_name=args.run_name,
+        retrieval_cfg=OmegaConf.create({"vector_backend": args.vector_backend}),
     )
 
     print(f"Wrote run file: {out}")

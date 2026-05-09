@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -209,6 +211,128 @@ class LocalGenerator:
         return text
 
 
+class RemoteOpenAICompatibleGenerator:
+    """Thin client for vLLM and other OpenAI-compatible HTTP servers."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        model_name: str,
+        max_new_tokens: int,
+        do_sample: bool,
+        temperature: float,
+        api_key: str | None = None,
+        api_type: str = "chat",
+        timeout_seconds: float = 120.0,
+    ) -> None:
+        cleaned_base_url = str(base_url or "").strip().rstrip("/")
+        if not cleaned_base_url:
+            raise ValueError(
+                "Remote generation requires `generation.remote_base_url` "
+                "or `VLLM_BASE_URL`."
+            )
+
+        self.base_url = cleaned_base_url
+        self.model_name = str(model_name)
+        self.max_new_tokens = int(max_new_tokens)
+        self.do_sample = bool(do_sample)
+        self.temperature = float(temperature)
+        self.api_key = _as_optional_str(api_key)
+        self.api_type = str(api_type or "chat").strip().lower()
+        self.timeout_seconds = float(timeout_seconds)
+
+    def _request(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        request = urllib.request.Request(
+            f"{self.base_url}{endpoint}",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(
+                request, timeout=float(self.timeout_seconds)
+            ) as response:
+                body = response.read()
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(
+                f"Remote generation request failed: {exc.code}. {body}"
+            ) from exc
+        return json.loads(body.decode("utf-8"))
+
+    def generate(self, prompt: str) -> str:
+        temperature = self.temperature if self.do_sample else 0.0
+        if self.api_type in ("completion", "completions"):
+            response = self._request(
+                "/completions",
+                {
+                    "model": self.model_name,
+                    "prompt": prompt,
+                    "max_tokens": self.max_new_tokens,
+                    "temperature": temperature,
+                },
+            )
+            choices = response.get("choices") or []
+            if not choices:
+                return ""
+            return str(choices[0].get("text") or "").strip()
+
+        response = self._request(
+            "/chat/completions",
+            {
+                "model": self.model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": self.max_new_tokens,
+                "temperature": temperature,
+            },
+        )
+        choices = response.get("choices") or []
+        if not choices:
+            return ""
+        message = choices[0].get("message") or {}
+        return str(message.get("content") or "").strip()
+
+
+def _build_generator_from_cfg(cfg: DictConfig):
+    backend = str(getattr(cfg.generation, "backend", "local")).strip().lower()
+    model_name = str(cfg.generation.llm_model_name)
+    if backend in ("local", "transformers"):
+        return LocalGenerator(
+            model_name=model_name,
+            max_new_tokens=int(cfg.generation.max_new_tokens),
+            do_sample=bool(cfg.generation.do_sample),
+            temperature=float(cfg.generation.temperature),
+            max_input_tokens=int(getattr(cfg.generation, "max_input_tokens", 1024)),
+            local_files_only=_as_bool(
+                getattr(cfg.generation, "local_files_only", False)
+            ),
+        )
+
+    if backend in ("openai_compatible", "vllm", "remote"):
+        return RemoteOpenAICompatibleGenerator(
+            base_url=str(getattr(cfg.generation, "remote_base_url", "") or ""),
+            model_name=model_name,
+            max_new_tokens=int(cfg.generation.max_new_tokens),
+            do_sample=bool(cfg.generation.do_sample),
+            temperature=float(cfg.generation.temperature),
+            api_key=_as_optional_str(getattr(cfg.generation, "remote_api_key", None)),
+            api_type=str(getattr(cfg.generation, "remote_api_type", "chat")),
+            timeout_seconds=float(
+                getattr(cfg.generation, "remote_timeout_seconds", 120.0)
+            ),
+        )
+
+    raise ValueError(
+        f"Unsupported generation backend: {backend!r}. "
+        "Use `local` or `openai_compatible`."
+    )
+
+
 def _retrieve_docs(
     retriever,
     docstore: dict[str, dict[str, Any]],
@@ -218,8 +342,9 @@ def _retrieve_docs(
     """Resolve retrieved doc ids into full text chunks from the docstore."""
     hits = retriever.retrieve(question, top_k=int(top_k))
     rows: list[RetrievedChunk] = []
+    retriever_payloads = getattr(retriever, "last_payloads", {}) or {}
     for h in hits:
-        doc = docstore.get(h.doc_id, {})
+        doc = docstore.get(h.doc_id, retriever_payloads.get(h.doc_id, {}))
         rows.append(
             RetrievedChunk(
                 doc_id=h.doc_id,
@@ -281,7 +406,7 @@ def _serialize_doc(
 
 
 def _run_one_question(
-    llm: LocalGenerator,
+    llm,
     retriever,
     docstore: dict[str, dict[str, Any]],
     question: str,
@@ -536,7 +661,8 @@ def generate_from_cfg(
         index_path=str(cfg.generation.index),
         retrieval_cfg=cfg.retrieval,
     )
-    docstore = _load_docstore(str(cfg.generation.corpus_path))
+    corpus_path = _as_optional_str(getattr(cfg.generation, "corpus_path", None))
+    docstore = _load_docstore(corpus_path) if corpus_path is not None else {}
     use_reranker = _as_bool(getattr(cfg.generation, "use_reranker", False))
     retrieve_top_k = int(
         getattr(cfg.generation, "retrieve_top_k", cfg.generation.top_k)
@@ -562,14 +688,7 @@ def generate_from_cfg(
             batch_size=int(getattr(cfg.generation, "reranker_batch_size", 16)),
         )
 
-    llm = LocalGenerator(
-        model_name=str(cfg.generation.llm_model_name),
-        max_new_tokens=int(cfg.generation.max_new_tokens),
-        do_sample=bool(cfg.generation.do_sample),
-        temperature=float(cfg.generation.temperature),
-        max_input_tokens=int(getattr(cfg.generation, "max_input_tokens", 1024)),
-        local_files_only=_as_bool(getattr(cfg.generation, "local_files_only", False)),
-    )
+    llm = _build_generator_from_cfg(cfg)
 
     if question:
         return _run_one_question(

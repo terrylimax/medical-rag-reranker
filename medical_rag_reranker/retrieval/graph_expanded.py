@@ -45,6 +45,7 @@ class GraphExpandedRetriever(Retriever):
     relation_weights: dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_RELATION_WEIGHTS)
     )
+    last_payloads: dict[str, dict[str, Any]] = field(default_factory=dict, init=False)
 
     def retrieve(self, query: str, top_k: int) -> list[ScoredDoc]:
         if int(top_k) <= 0:
@@ -121,7 +122,19 @@ class GraphExpandedRetriever(Retriever):
             scored.append(ScoredDoc(doc_id=doc_id, score=float(final_score)))
 
         scored.sort(key=lambda item: item.score, reverse=True)
-        return scored[: int(top_k)]
+        final = scored[: int(top_k)]
+        self._sync_payloads([item.doc_id for item in final])
+        return final
+
+    def _sync_payloads(self, doc_ids: list[str]) -> None:
+        payloads = dict(getattr(self.base, "last_payloads", {}) or {})
+        missing = [doc_id for doc_id in doc_ids if doc_id not in payloads]
+        fetch_payloads = getattr(self.base, "fetch_payloads", None)
+        if missing and callable(fetch_payloads):
+            payloads.update(fetch_payloads(missing))
+        self.last_payloads = {
+            doc_id: payloads[doc_id] for doc_id in doc_ids if doc_id in payloads
+        }
 
     def _doc_meta(self, doc_id: str) -> dict[str, Any]:
         docs = self.graph.get("docs", {})

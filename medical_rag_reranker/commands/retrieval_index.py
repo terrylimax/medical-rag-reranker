@@ -186,6 +186,18 @@ def _infer_graph_base_retriever(retriever: str, base_retriever: str | None) -> s
     return "bm25"
 
 
+def _infer_rag_fusion_base_retriever(retriever: str, base_retriever: str | None) -> str:
+    if base_retriever:
+        return base_retriever
+    if "bm25" in retriever:
+        return "bm25"
+    if "medcpt" in retriever:
+        return "bi_encoder"
+    if "hybrid" in retriever:
+        return "hybrid"
+    return "dense"
+
+
 def _relation_weights_from_config(value: object | None) -> dict[str, float]:
     weights = dict(DEFAULT_RELATION_WEIGHTS)
     if value:
@@ -222,6 +234,11 @@ def run_index(
     graph_weight: float = 0.3,
     hop_decay: float = 0.65,
     relation_weights: dict[str, float] | None = None,
+    vector_backend: str = "local",
+    qdrant_url: str = "http://localhost:6333",
+    qdrant_api_key: str | None = None,
+    qdrant_collection: str = "medical_rag_docs",
+    qdrant_timeout_seconds: float = 60.0,
 ) -> Path | tuple[Path, Path, Path]:
     """Build index(es) for a retriever and persist them to disk."""
     if retriever.startswith("graph"):
@@ -258,6 +275,20 @@ def run_index(
             alpha=alpha,
             cand_k=cand_k,
             rrf_k=rrf_k,
+            graph_path=graph_path,
+            base_retriever=base_retriever,
+            seed_k=seed_k,
+            expand_k=expand_k,
+            max_hops=max_hops,
+            base_weight=base_weight,
+            graph_weight=graph_weight,
+            hop_decay=hop_decay,
+            relation_weights=relation_weights,
+            vector_backend=vector_backend,
+            qdrant_url=qdrant_url,
+            qdrant_api_key=qdrant_api_key,
+            qdrant_collection=qdrant_collection,
+            qdrant_timeout_seconds=qdrant_timeout_seconds,
         )
         base_index_path = (
             base_index_result[0]
@@ -270,6 +301,7 @@ def run_index(
             "version": 1,
             "retriever": retriever,
             "base_retriever": effective_base,
+            "base_vector_backend": str(vector_backend),
             "base_index": _relpath(Path(base_index_path), graph_manifest.parent),
             "graph_path": _relpath(effective_graph_path, graph_manifest.parent),
             "seed_k": int(seed_k),
@@ -287,6 +319,43 @@ def run_index(
         print(f"Saved graph artifact to: {effective_graph_path}")
         return graph_manifest
 
+    if retriever == "rag_fusion" or retriever.startswith("rag_fusion_"):
+        effective_base = _infer_rag_fusion_base_retriever(retriever, base_retriever)
+        return run_index(
+            retriever=effective_base,
+            corpus=corpus,
+            out=out,
+            model=model,
+            query_model=query_model,
+            doc_model=doc_model,
+            dense_backend=dense_backend,
+            pooling=pooling,
+            normalize=normalize,
+            query_max_length=query_max_length,
+            doc_max_length=doc_max_length,
+            encode_batch_size=encode_batch_size,
+            max_seq_length=max_seq_length,
+            local_files_only=local_files_only,
+            fusion=fusion,
+            alpha=alpha,
+            cand_k=cand_k,
+            rrf_k=rrf_k,
+            graph_path=graph_path,
+            base_retriever=base_retriever,
+            seed_k=seed_k,
+            expand_k=expand_k,
+            max_hops=max_hops,
+            base_weight=base_weight,
+            graph_weight=graph_weight,
+            hop_decay=hop_decay,
+            relation_weights=relation_weights,
+            vector_backend=vector_backend,
+            qdrant_url=qdrant_url,
+            qdrant_api_key=qdrant_api_key,
+            qdrant_collection=qdrant_collection,
+            qdrant_timeout_seconds=qdrant_timeout_seconds,
+        )
+
     if retriever == "hybrid":
         manifest_path, bm25_path, dense_path = _resolve_hybrid_out_paths(out)
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -295,6 +364,11 @@ def run_index(
 
         bm25 = BM25Retriever()
         dense_backend = str(dense_backend).strip()
+        if dense_backend == "qdrant":
+            dense_path = dense_path.with_suffix(".json")
+            if dense_path.name == "dense_index.json":
+                dense_path = dense_path.with_name("qdrant_index.json")
+
         if dense_backend == "bi_encoder":
             from medical_rag_reranker.retrieval.bi_encoder import BiEncoderRetriever
 
@@ -322,10 +396,22 @@ def run_index(
                 batch_size=int(encode_batch_size),
                 max_seq_length=max_seq_length,
             )
+        elif dense_backend == "qdrant":
+            from medical_rag_reranker.retrieval.qdrant import QdrantRetriever
+
+            dense = QdrantRetriever(
+                url=str(qdrant_url),
+                collection_name=str(qdrant_collection),
+                model_name=str(model),
+                batch_size=int(encode_batch_size),
+                max_seq_length=max_seq_length,
+                api_key=qdrant_api_key,
+                timeout_seconds=float(qdrant_timeout_seconds),
+            )
         else:
             raise ValueError(
                 f"Unsupported hybrid dense_backend: {dense_backend!r}. "
-                "Expected `dense` or `bi_encoder`."
+                "Expected `dense`, `bi_encoder`, or `qdrant`."
             )
 
         with timed_stage("Build hybrid BM25 index"):
@@ -370,18 +456,31 @@ def run_index(
     if retriever == "bm25":
         retriever_impl = BM25Retriever()
     elif retriever == "dense":
-        try:
-            from medical_rag_reranker.retrieval.dense import DenseRetriever
-        except Exception as e:
-            raise RuntimeError(
-                "Dense index requires `sentence-transformers`. "
-                "Install dependencies or switch to retrieval=bm25."
-            ) from e
-        retriever_impl = DenseRetriever(
-            model_name=model,
-            batch_size=int(encode_batch_size),
-            max_seq_length=max_seq_length,
-        )
+        if str(vector_backend).strip().lower() == "qdrant":
+            from medical_rag_reranker.retrieval.qdrant import QdrantRetriever
+
+            retriever_impl = QdrantRetriever(
+                url=str(qdrant_url),
+                collection_name=str(qdrant_collection),
+                model_name=str(model),
+                batch_size=int(encode_batch_size),
+                max_seq_length=max_seq_length,
+                api_key=qdrant_api_key,
+                timeout_seconds=float(qdrant_timeout_seconds),
+            )
+        else:
+            try:
+                from medical_rag_reranker.retrieval.dense import DenseRetriever
+            except Exception as e:
+                raise RuntimeError(
+                    "Dense index requires `sentence-transformers`. "
+                    "Install dependencies or switch to retrieval=bm25."
+                ) from e
+            retriever_impl = DenseRetriever(
+                model_name=model,
+                batch_size=int(encode_batch_size),
+                max_seq_length=max_seq_length,
+            )
     elif retriever == "bi_encoder":
         from medical_rag_reranker.retrieval.bi_encoder import BiEncoderRetriever
 
@@ -445,6 +544,23 @@ def run_from_cfg(cfg: DictConfig) -> Path | tuple[Path, Path, Path]:
         graph_weight=float(retrieval_cfg.get("graph_weight", 0.3)),
         hop_decay=float(retrieval_cfg.get("hop_decay", 0.65)),
         relation_weights=retrieval_cfg.get("relation_weights"),
+        vector_backend=str(retrieval_cfg.get("vector_backend", "local")),
+        qdrant_url=str(retrieval_cfg.get("url", run_cfg.get("qdrant_url", ""))),
+        qdrant_api_key=str(
+            retrieval_cfg.get("api_key", run_cfg.get("qdrant_api_key", "")) or ""
+        ),
+        qdrant_collection=str(
+            retrieval_cfg.get(
+                "collection_name",
+                run_cfg.get("qdrant_collection", "medical_rag_docs"),
+            )
+        ),
+        qdrant_timeout_seconds=float(
+            retrieval_cfg.get(
+                "timeout_seconds",
+                run_cfg.get("qdrant_timeout_seconds", 60.0),
+            )
+        ),
     )
 
 
@@ -491,7 +607,7 @@ def main():
     p.add_argument("--doc-model", default="ncbi/MedCPT-Article-Encoder")
     p.add_argument(
         "--dense-backend",
-        choices=["dense", "bi_encoder"],
+        choices=["dense", "bi_encoder", "qdrant"],
         default="dense",
         help="only for hybrid",
     )
@@ -501,6 +617,12 @@ def main():
     p.add_argument("--doc-max-length", type=int, default=256)
     p.add_argument("--batch-size", type=int, default=32)
     p.add_argument("--local-files-only", action="store_true")
+    p.add_argument(
+        "--vector-backend",
+        choices=["local", "qdrant"],
+        default="local",
+        help="only for dense-compatible retrieval",
+    )
     p.add_argument(
         "--fusion",
         choices=["score", "rrf"],
@@ -523,6 +645,21 @@ def main():
     )
     p.add_argument(
         "--hop-decay", type=float, default=0.65, help="only for graph retrievers"
+    )
+    p.add_argument(
+        "--qdrant-url", default="http://localhost:6333", help="only for qdrant"
+    )
+    p.add_argument("--qdrant-api-key", default=None, help="only for qdrant")
+    p.add_argument(
+        "--qdrant-collection",
+        default="medical_rag_docs",
+        help="only for qdrant",
+    )
+    p.add_argument(
+        "--qdrant-timeout-seconds",
+        type=float,
+        default=60.0,
+        help="only for qdrant",
     )
     args = p.parse_args()
 
@@ -552,6 +689,11 @@ def main():
         base_weight=args.base_weight,
         graph_weight=args.graph_weight,
         hop_decay=args.hop_decay,
+        vector_backend=args.vector_backend,
+        qdrant_url=args.qdrant_url,
+        qdrant_api_key=args.qdrant_api_key,
+        qdrant_collection=args.qdrant_collection,
+        qdrant_timeout_seconds=args.qdrant_timeout_seconds,
     )
 
 

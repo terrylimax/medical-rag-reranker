@@ -14,3 +14,7 @@ fusion: ${retrieval.fusion}
 alpha: 0.5
 cand_k: 50
 rrf_k: ${retrieval.rrf_k}
+qdrant_url: ${oc.env:QDRANT_URL,http://localhost:6333}
+qdrant_api_key: ${oc.env:QDRANT_API_KEY,null}
+qdrant_collection: ${oc.env:QDRANT_COLLECTION,medical_rag_docs}
+qdrant_timeout_seconds: ${oc.decode:${oc.env:QDRANT_TIMEOUT_SECONDS,60}}

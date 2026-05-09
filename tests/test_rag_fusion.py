@@ -17,6 +17,16 @@ class _VariantRetriever:
         return [ScoredDoc("doc-overview", 1.0), ScoredDoc("doc-symptoms", 0.5)][:top_k]
 
 
+class _PayloadVariantRetriever(_VariantRetriever):
+    def retrieve(self, query: str, top_k: int) -> list[ScoredDoc]:
+        hits = super().retrieve(query, top_k)
+        self.last_payloads = {
+            hit.doc_id: {"doc_id": hit.doc_id, "text": f"text for {hit.doc_id}"}
+            for hit in hits
+        }
+        return hits
+
+
 def test_build_medical_query_variants_extracts_topic_and_intent() -> None:
     variants = build_medical_query_variants(
         "What are the symptoms of X-linked lymphoproliferative syndrome?",
@@ -48,3 +58,20 @@ def test_rag_fusion_merges_variant_results_with_rrf() -> None:
 
     assert {doc.doc_id for doc in results} == {"doc-symptoms", "doc-overview"}
     assert any("clinical features" in query for query in retriever.last_queries)
+
+
+def test_rag_fusion_keeps_base_payloads() -> None:
+    retriever = RagFusionRetriever(
+        base=_PayloadVariantRetriever(),
+        num_queries=5,
+        cand_k=2,
+        rrf_k=10,
+    )
+
+    results = retriever.retrieve(
+        "What are the symptoms of X-linked lymphoproliferative syndrome?",
+        top_k=2,
+    )
+
+    for hit in results:
+        assert retriever.last_payloads[hit.doc_id]["text"].startswith("text for")

@@ -18,5 +18,15 @@ data:
   JOBS_BROKER_TASK_NAME: medical_rag_reranker.jobs.tasks.process_inference_job
   JOBS_API_PORT: "8000"
   JOBS_API_WORKERS: "2"
+  RETRIEVAL_VECTOR_BACKEND: local
+  RETRIEVAL_DENSE_BACKEND: dense
+  QDRANT_URL: http://localhost:6333
+  QDRANT_COLLECTION: medical_rag_docs
+  QDRANT_TIMEOUT_SECONDS: "60"
   GENERATION_CORPUS_PATH: /app/medical_rag_reranker/demo_assets/corpus.jsonl
   GENERATION_INDEX_PATH: /app/medical_rag_reranker/demo_assets/bm25_index.json
+  GENERATION_BACKEND: local
+  GENERATION_LLM_MODEL_NAME: google/flan-t5-small
+  VLLM_BASE_URL: ""
+  VLLM_API_TYPE: chat
+  VLLM_TIMEOUT_SECONDS: "120"

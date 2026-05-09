@@ -7,6 +7,7 @@ mode: single
 queries_path: ${oc.env:GENERATION_QUERIES_PATH,${paths.data_dir}/processed/eval_queries.jsonl}
 
 # Corpus JSONL with doc_id/text/source fields.
+# Set to null when using a remote retriever that returns text in payload.
 corpus_path: ${oc.env:GENERATION_CORPUS_PATH,${paths.data_dir}/processed/corpus.jsonl}
 
 # Index file or hybrid manifest path.
@@ -19,13 +20,22 @@ use_reranker: false
 reranker_checkpoint_path: ${oc.env:GENERATION_RERANKER_CHECKPOINT_PATH,null}
 reranker_batch_size: 16
 
+# Generation backend: local | openai_compatible.
+backend: ${oc.env:GENERATION_BACKEND,local}
+
 # Local transformers generation backend.
-llm_model_name: google/flan-t5-small
+llm_model_name: ${oc.env:GENERATION_LLM_MODEL_NAME,google/flan-t5-small}
 local_files_only: ${oc.env:GENERATION_LOCAL_FILES_ONLY,false}
 max_input_tokens: 1024
 max_new_tokens: 192
 temperature: 0.0
 do_sample: false
+
+# Remote OpenAI-compatible backend. For vLLM, point this to `${host}/v1`.
+remote_base_url: ${oc.env:VLLM_BASE_URL,null}
+remote_api_key: ${oc.env:VLLM_API_KEY,null}
+remote_api_type: ${oc.env:VLLM_API_TYPE,chat}
+remote_timeout_seconds: ${oc.decode:${oc.env:VLLM_TIMEOUT_SECONDS,120}}
 
 # Batch reporting.
 report_path: reports/baseline_examples.md

@@ -514,6 +514,99 @@ poetry run python -m medical_rag_reranker.commands eval_generation \
 The LLM judge writes `faithfulness`, `relevance`, `completeness`, `safety`,
 `verdict`, and `rationale` into the same evaluation JSONL/report artifacts.
 
+## Remote Vector Storage and vLLM Generation
+
+The retrieval layer can use Qdrant as a remote vector backend for the existing
+`dense` retriever instead of writing vectors to a local pickle index. The
+retrieval method stays `dense`; `retrieval.vector_backend=qdrant` selects remote
+vector storage. Qdrant stores document text and metadata in point payloads, so
+generation can run without a local `corpus.jsonl` when the retriever returns
+payloads.
+
+Example Qdrant index build:
+
+```bash
+QDRANT_URL=https://your-qdrant-endpoint \
+QDRANT_API_KEY=your-token \
+QDRANT_COLLECTION=medical_rag_docs \
+poetry run python -m medical_rag_reranker.commands index \
+  --overrides "retrieval=dense,retrieval.vector_backend=qdrant"
+```
+
+Example retrieval/evaluation run:
+
+```bash
+QDRANT_URL=https://your-qdrant-endpoint \
+QDRANT_API_KEY=your-token \
+poetry run python -m medical_rag_reranker.commands eval_retrieval \
+  --overrides "retrieval=dense,retrieval.vector_backend=qdrant"
+```
+
+Qdrant can also be used as the dense backend inside existing retrieval methods:
+
+- `retrieval=hybrid,retrieval.dense_backend=qdrant`: local BM25 plus
+  Qdrant-backed dense retrieval
+- `retrieval=graph_bm25,retrieval.base_retriever=dense,retrieval.vector_backend=qdrant`:
+  Qdrant-backed dense seed retrieval followed by local MedQuAD metadata graph
+  expansion
+- `retrieval=rag_fusion_dense,retrieval.vector_backend=qdrant`: deterministic
+  query expansion followed by Qdrant-backed dense retrieval
+
+These modes still use the same method semantics as the local variants. Qdrant is
+the remote vector-index backend, not a separate retrieval algorithm. If you want
+the saved manifest to use a clearer filename, also override
+`retrieval.index_file=qdrant_index.json`; otherwise the default dense index path
+is reused.
+
+Generation can also call a remote OpenAI-compatible server, including vLLM,
+RunPod Serverless vLLM workers, or a self-hosted vLLM endpoint. Point
+`VLLM_BASE_URL` at the `/v1` base URL.
+
+```bash
+GENERATION_BACKEND=openai_compatible \
+VLLM_BASE_URL=https://your-vllm-endpoint/v1 \
+VLLM_API_KEY=your-token \
+GENERATION_CORPUS_PATH=null \
+poetry run python -m medical_rag_reranker.commands generate \
+  --question "What is metformin used for?" \
+  --overrides "retrieval=dense,retrieval.vector_backend=qdrant,generation.llm_model_name=your-served-model"
+```
+
+Use `GENERATION_CORPUS_PATH=null` only when the active retriever returns document
+text in payloads. For local BM25/dense/hybrid indices, keep the default corpus
+path.
+
+Deployment wiring:
+
+- local Python/Hydra runs: export `QDRANT_URL`, `QDRANT_API_KEY`,
+  `QDRANT_COLLECTION`, and set `RETRIEVAL_VECTOR_BACKEND=qdrant`
+- Docker Compose: put the same values in `.env`; `docker-compose.yml` passes
+  them into both `app` and `worker`
+- Kubernetes: put non-secret values in `k8s/01-configmap.yaml` and
+  `QDRANT_API_KEY` in `k8s/02-secret.yaml`; both `app` and `worker` load them
+  via `envFrom`
+
+For Qdrant-backed generation in Docker/Kubernetes, also set:
+
+```bash
+GENERATION_CORPUS_PATH=null
+GENERATION_INDEX_PATH=/app/artifacts/qdrant_index.json
+```
+
+For vLLM-backed generation in Docker/Kubernetes, set:
+
+```bash
+GENERATION_BACKEND=openai_compatible
+GENERATION_LLM_MODEL_NAME=your-served-model
+VLLM_BASE_URL=https://your-vllm-endpoint/v1
+VLLM_API_KEY=your-token
+VLLM_API_TYPE=chat
+VLLM_TIMEOUT_SECONDS=120
+```
+
+In Kubernetes, keep `VLLM_API_KEY` in `k8s/02-secret.yaml`; the other values can
+live in `k8s/01-configmap.yaml`.
+
 ---
 
 ## Async-Ready Job Storage

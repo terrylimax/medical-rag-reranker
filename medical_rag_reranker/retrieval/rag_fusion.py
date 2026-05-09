@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Iterable, List
+from typing import Iterable, List, Any
 
 from medical_rag_reranker.data.metadata import (
     infer_diagnosis_or_topic,
@@ -122,6 +122,7 @@ class RagFusionRetriever(Retriever):
     rrf_k: int = 60
     include_original: bool = True
     last_queries: list[str] = field(default_factory=list, init=False)
+    last_payloads: dict[str, dict[str, Any]] = field(default_factory=dict, init=False)
 
     def expand_query(self, query: str) -> list[str]:
         return build_medical_query_variants(
@@ -136,11 +137,13 @@ class RagFusionRetriever(Retriever):
 
         variants = self.expand_query(query)
         self.last_queries = variants
+        self.last_payloads = {}
         scores: dict[str, float] = {}
         candidate_k = max(int(top_k), int(self.cand_k))
 
         for variant in variants:
             hits = self.base.retrieve(variant, top_k=candidate_k)
+            self.last_payloads.update(getattr(self.base, "last_payloads", {}) or {})
             for rank, doc in enumerate(hits, start=1):
                 scores[doc.doc_id] = scores.get(doc.doc_id, 0.0) + (
                     1.0 / (float(self.rrf_k) + float(rank))
@@ -149,4 +152,11 @@ class RagFusionRetriever(Retriever):
         ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)[
             : int(top_k)
         ]
+        final_doc_ids = [doc_id for doc_id, _ in ranked]
+        missing = [
+            doc_id for doc_id in final_doc_ids if doc_id not in self.last_payloads
+        ]
+        fetch_payloads = getattr(self.base, "fetch_payloads", None)
+        if missing and callable(fetch_payloads):
+            self.last_payloads.update(fetch_payloads(missing))
         return [ScoredDoc(doc_id, float(score)) for doc_id, score in ranked]
