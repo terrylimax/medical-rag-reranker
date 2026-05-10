@@ -21,7 +21,7 @@ spec:
           command:
             - sh
             - -c
-            - celery -A medical_rag_reranker.jobs.tasks:celery_app worker --loglevel=info --queues=${JOBS_BROKER_QUEUE:-inference_jobs}
+            - if [ "${ARTIFACT_SYNC_ON_START:-false}" = "true" ]; then python -m medical_rag_reranker.commands artifact_pull; fi; celery -A medical_rag_reranker.jobs.tasks:celery_app worker --loglevel=info --queues=${JOBS_BROKER_QUEUE:-inference_jobs}
           envFrom:
             - configMapRef:
                 name: medical-rag-config

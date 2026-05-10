@@ -1,0 +1,5 @@
+outs:
+- md5: bef8f370bf083e48b6a46283e965acb7
+  size: 25623089
+  hash: md5
+  path: dense_index.pkl

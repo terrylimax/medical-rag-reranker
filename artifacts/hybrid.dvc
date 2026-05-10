@@ -1,0 +1,6 @@
+outs:
+- md5: 0ade1aefcb89202615d9caa25f2c4c19.dir
+  size: 553
+  nfiles: 1
+  hash: md5
+  path: hybrid

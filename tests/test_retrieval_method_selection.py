@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -180,3 +181,143 @@ def test_load_retriever_builds_rag_fusion_from_config(monkeypatch) -> None:
     assert retriever.cand_k == 25
     assert retriever.rrf_k == 42
     assert retriever.include_original is False
+
+
+def test_load_dense_retriever_uses_qdrant_vector_backend(monkeypatch) -> None:
+    from medical_rag_reranker.retrieval import qdrant as qdrant_module
+
+    class FakeQdrant:
+        pass
+
+    monkeypatch.setattr(
+        qdrant_module.QdrantRetriever,
+        "load",
+        lambda index_path: FakeQdrant(),
+    )
+
+    retriever = loading.load_retriever(
+        "dense",
+        "artifacts/qdrant_index.json",
+        OmegaConf.create({"vector_backend": "qdrant"}),
+    )
+
+    assert isinstance(retriever, FakeQdrant)
+
+
+def test_load_rag_fusion_dense_passes_qdrant_backend_to_base(monkeypatch) -> None:
+    from medical_rag_reranker.retrieval import qdrant as qdrant_module
+
+    class FakeQdrant:
+        pass
+
+    base = FakeQdrant()
+    monkeypatch.setattr(
+        qdrant_module.QdrantRetriever,
+        "load",
+        lambda index_path: base,
+    )
+
+    retriever = loading.load_retriever(
+        "rag_fusion_dense",
+        "artifacts/qdrant_index.json",
+        OmegaConf.create(
+            {
+                "base_retriever": "dense",
+                "vector_backend": "qdrant",
+                "num_queries": 3,
+            }
+        ),
+    )
+
+    assert retriever.base is base
+    assert retriever.num_queries == 3
+
+
+def test_load_graph_retriever_uses_manifest_vector_backend(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from medical_rag_reranker.retrieval import qdrant as qdrant_module
+
+    class FakeQdrant:
+        pass
+
+    base = FakeQdrant()
+    monkeypatch.setattr(
+        qdrant_module.QdrantRetriever,
+        "load",
+        lambda index_path: base,
+    )
+
+    graph_path = tmp_path / "medquad_graph.json"
+    graph_path.write_text(
+        json.dumps(
+            {
+                "format": "medical-rag-reranker.medquad-graph",
+                "version": 1,
+                "docs": {},
+                "indexes": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "graph_index.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "format": "medical-rag-reranker.graph-expanded-index",
+                "version": 1,
+                "retriever": "graph_bm25",
+                "base_retriever": "dense",
+                "base_vector_backend": "qdrant",
+                "base_index": "qdrant_index.json",
+                "graph_path": "medquad_graph.json",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    retriever = loading.load_retriever("graph_bm25", str(manifest_path))
+
+    assert retriever.base is base
+
+
+def test_load_hybrid_retriever_supports_qdrant_dense_backend(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from medical_rag_reranker.retrieval import qdrant as qdrant_module
+
+    class FakeBM25:
+        pass
+
+    class FakeQdrant:
+        pass
+
+    monkeypatch.setattr(loading.BM25Retriever, "load", lambda index_path: FakeBM25())
+    monkeypatch.setattr(
+        qdrant_module.QdrantRetriever, "load", lambda index_path: FakeQdrant()
+    )
+    manifest = tmp_path / "hybrid_index.json"
+    manifest.write_text(
+        """
+{
+  "format": "medical-rag-reranker.hybrid-index",
+  "version": 1,
+  "retriever": "hybrid",
+  "fusion": "rrf",
+  "cand_k": 25,
+  "rrf_k": 42,
+  "dense_backend": "qdrant",
+  "bm25_index": "bm25_index.json.gz",
+  "dense_index": "qdrant_index.json"
+}
+""",
+        encoding="utf-8",
+    )
+
+    retriever = loading.load_retriever("hybrid", str(manifest))
+
+    assert isinstance(retriever.bm25, FakeBM25)
+    assert isinstance(retriever.dense, FakeQdrant)
+    assert retriever.fusion == "rrf"
+    assert retriever.cand_k == 25
+    assert retriever.rrf_k == 42

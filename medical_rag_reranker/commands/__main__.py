@@ -43,6 +43,8 @@ def main() -> None:
     - python -m medical_rag_reranker.commands job_result
     - python -m medical_rag_reranker.commands migrate_jobs_schema
     - python -m medical_rag_reranker.commands serve_jobs_api
+    - python -m medical_rag_reranker.commands artifact_push
+    - python -m medical_rag_reranker.commands artifact_pull
 
     Examples:
     - python -m medical_rag_reranker.commands download_data
@@ -65,6 +67,8 @@ def main() -> None:
     - python -m medical_rag_reranker.commands job_result --job_id "..."
     - python -m medical_rag_reranker.commands migrate_jobs_schema
     - python -m medical_rag_reranker.commands serve_jobs_api
+    - python -m medical_rag_reranker.commands artifact_push
+    - python -m medical_rag_reranker.commands artifact_pull
     """
     fire.Fire(
         {
@@ -87,6 +91,8 @@ def main() -> None:
             "job_result": cmd_job_result,
             "migrate_jobs_schema": cmd_migrate_jobs_schema,
             "serve_jobs_api": cmd_serve_jobs_api,
+            "artifact_push": cmd_artifact_push,
+            "artifact_pull": cmd_artifact_pull,
         }
     )
 
@@ -181,6 +187,62 @@ def cmd_generate(
         print(f"Report: {report_path}")
 
     return result
+
+
+def cmd_artifact_push(
+    remote_uri: Optional[str] = None,
+    local_root: Optional[str] = None,
+    registry_path: Optional[str] = None,
+    include: Optional[str] = None,
+    exclude: Optional[str] = None,
+    dry_run: bool = False,
+    region: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
+    remote_name: Optional[str] = None,
+) -> dict:
+    """Upload runtime data/index artifacts to S3-compatible object storage."""
+    from medical_rag_reranker.artifacts.sync import push_artifacts
+
+    registry = push_artifacts(
+        remote_uri=remote_uri,
+        local_root=local_root,
+        registry_path=registry_path,
+        include=include,
+        exclude=exclude,
+        dry_run=dry_run,
+        region=region,
+        endpoint_url=endpoint_url,
+        remote_name=remote_name,
+    )
+    print(json.dumps(registry, ensure_ascii=False, indent=2))
+    return registry
+
+
+def cmd_artifact_pull(
+    remote_uri: Optional[str] = None,
+    local_root: Optional[str] = None,
+    registry_path: Optional[str] = None,
+    region: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
+    overwrite: bool = True,
+    dry_run: bool = False,
+    remote_name: Optional[str] = None,
+) -> dict:
+    """Download runtime data/index artifacts from S3-compatible object storage."""
+    from medical_rag_reranker.artifacts.sync import pull_artifacts
+
+    registry = pull_artifacts(
+        remote_uri=remote_uri,
+        local_root=local_root,
+        registry_path=registry_path,
+        region=region,
+        endpoint_url=endpoint_url,
+        overwrite=overwrite,
+        dry_run=dry_run,
+        remote_name=remote_name,
+    )
+    print(json.dumps(registry, ensure_ascii=False, indent=2))
+    return registry
 
 
 def _build_job_runtime(cfg: DictConfig):

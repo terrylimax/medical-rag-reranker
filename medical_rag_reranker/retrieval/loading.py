@@ -62,6 +62,10 @@ def _load_hybrid_from_manifest(manifest_path: Path):
         from medical_rag_reranker.retrieval.dense import DenseRetriever
 
         dense = DenseRetriever.load(str(dense_index))
+    elif dense_backend == "qdrant":
+        from medical_rag_reranker.retrieval.qdrant import QdrantRetriever
+
+        dense = QdrantRetriever.load(str(dense_index))
     else:
         raise ValueError(f"Unsupported hybrid dense_backend: {dense_backend!r}")
 
@@ -87,7 +91,8 @@ def _load_graph_from_manifest(manifest_path: Path):
     base_index = _resolve_relative(str(manifest["base_index"]), base_dir)
     graph_path = _resolve_relative(str(manifest["graph_path"]), base_dir)
 
-    base = load_retriever(base_retriever, str(base_index))
+    base_cfg = {"vector_backend": manifest.get("base_vector_backend", "local")}
+    base = load_retriever(base_retriever, str(base_index), base_cfg)
     graph = load_medquad_graph(graph_path)
     weights = dict(DEFAULT_RELATION_WEIGHTS)
     weights.update(manifest.get("relation_weights") or {})
@@ -133,7 +138,7 @@ def _load_rag_fusion(retriever_name: str, index_path: str, retrieval_cfg: Any | 
             _infer_rag_fusion_base(retriever_name),
         )
     )
-    base = load_retriever(base_name, index_path)
+    base = load_retriever(base_name, index_path, retrieval_cfg)
     return RagFusionRetriever(
         base=base,
         num_queries=int(_get_cfg_value(retrieval_cfg, "num_queries", 5)),
@@ -151,6 +156,10 @@ def load_retriever(
     if retriever_name == "bm25":
         return BM25Retriever.load(index_path)
     if retriever_name == "dense":
+        if str(_get_cfg_value(retrieval_cfg, "vector_backend", "local")) == "qdrant":
+            from medical_rag_reranker.retrieval.qdrant import QdrantRetriever
+
+            return QdrantRetriever.load(index_path)
         try:
             from medical_rag_reranker.retrieval.dense import DenseRetriever
         except Exception as e:

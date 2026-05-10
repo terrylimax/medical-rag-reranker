@@ -1,0 +1,5 @@
+outs:
+- md5: bfafd1994fc6b6742a6acc0feb56259f
+  size: 50824540
+  hash: md5
+  path: medcpt_pilot_index.pkl

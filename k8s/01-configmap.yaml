@@ -18,5 +18,25 @@ data:
   JOBS_BROKER_TASK_NAME: medical_rag_reranker.jobs.tasks.process_inference_job
   JOBS_API_PORT: "8000"
   JOBS_API_WORKERS: "2"
+  RETRIEVAL_VECTOR_BACKEND: local
+  RETRIEVAL_DENSE_BACKEND: dense
+  QDRANT_URL: http://localhost:6333
+  QDRANT_COLLECTION: medical_rag_docs
+  QDRANT_TIMEOUT_SECONDS: "60"
   GENERATION_CORPUS_PATH: /app/medical_rag_reranker/demo_assets/corpus.jsonl
   GENERATION_INDEX_PATH: /app/medical_rag_reranker/demo_assets/bm25_index.json
+  GENERATION_BACKEND: local
+  GENERATION_LLM_MODEL_NAME: google/flan-t5-small
+  VLLM_BASE_URL: ""
+  VLLM_API_TYPE: chat
+  VLLM_TIMEOUT_SECONDS: "120"
+  LLM_JUDGE_BASE_URL: ""
+  LLM_JUDGE_MODEL: mistralai/Mistral-Small-3.2-24B-Instruct-2506
+  LLM_JUDGE_TIMEOUT_SECONDS: "300"
+  ARTIFACT_REMOTE_URI: ""
+  ARTIFACT_LOCAL_ROOT: /app
+  ARTIFACT_REGISTRY_PATH: artifacts/index_registry.json
+  ARTIFACT_DVC_REMOTE: artifact_s3
+  ARTIFACT_SYNC_ON_START: "false"
+  ARTIFACT_S3_ENDPOINT_URL: ""
+  AWS_REGION: eu-central-1

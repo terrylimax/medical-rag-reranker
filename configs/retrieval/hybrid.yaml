@@ -1,5 +1,6 @@
 name: hybrid
 index_file: hybrid/hybrid_index.json
+dense_backend: ${oc.env:RETRIEVAL_DENSE_BACKEND,dense}
 fusion: rrf
 alpha: 0.6
 cand_k: 50

@@ -75,7 +75,7 @@ def build_judge_messages(
     reference_block = ""
     if reference_answer:
         reference_block = (
-            "\n\nReference answer:\n" f"{_truncate(reference_answer, max_doc_chars)}"
+            f"\n\nReference answer:\n{_truncate(reference_answer, max_doc_chars)}"
         )
     reference_separator = "\n\n" if reference_block else ""
 
