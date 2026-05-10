@@ -275,7 +275,7 @@ def build_eval_pack(
             if value not in (None, "", []):
                 query[field] = value
         eval_queries.append(query)
-        qrels_lines.append(f'{r["question_id"]}\t0\t{doc_id}\t1')
+        qrels_lines.append(f"{r['question_id']}\t0\t{doc_id}\t1")
 
     return eval_queries, qrels_lines
 
@@ -419,7 +419,7 @@ def main():
     print(f"- {result['corpus_path']} ({result['num_corpus_docs']} docs)")
     print(f"- {result['graph_path']}")
     print(f"- {result['splits_path']}")
-    print(f"- {result['eval_queries_path']} " f"({result['num_eval_queries']} queries)")
+    print(f"- {result['eval_queries_path']} ({result['num_eval_queries']} queries)")
     print(f"- {result['qrels_path']} ({result['num_qrels']} lines)")
 
 
