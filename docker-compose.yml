@@ -112,6 +112,16 @@ services:
       LLM_JUDGE_MODEL: ${LLM_JUDGE_MODEL:-mistralai/Mistral-Small-3.2-24B-Instruct-2506}
       LLM_JUDGE_API_KEY: ${LLM_JUDGE_API_KEY:-}
       LLM_JUDGE_TIMEOUT_SECONDS: ${LLM_JUDGE_TIMEOUT_SECONDS:-300}
+      ARTIFACT_REMOTE_URI: ${ARTIFACT_REMOTE_URI:-}
+      ARTIFACT_LOCAL_ROOT: ${ARTIFACT_LOCAL_ROOT:-/app}
+      ARTIFACT_REGISTRY_PATH: ${ARTIFACT_REGISTRY_PATH:-artifacts/index_registry.json}
+      ARTIFACT_DVC_REMOTE: ${ARTIFACT_DVC_REMOTE:-artifact_s3}
+      ARTIFACT_SYNC_ON_START: ${ARTIFACT_SYNC_ON_START:-false}
+      ARTIFACT_S3_ENDPOINT_URL: ${ARTIFACT_S3_ENDPOINT_URL:-}
+      AWS_REGION: ${AWS_REGION:-eu-central-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
     volumes:
       - ./data:/app/data
       - ./artifacts:/app/artifacts
@@ -128,7 +138,7 @@ services:
       [
         "sh",
         "-c",
-        "uvicorn medical_rag_reranker.asgi:app --host 0.0.0.0 --port 8000 --workers ${JOBS_API_WORKERS:-2}",
+        'if [ "$${ARTIFACT_SYNC_ON_START:-false}" = "true" ]; then python -m medical_rag_reranker.commands artifact_pull; fi; uvicorn medical_rag_reranker.asgi:app --host 0.0.0.0 --port 8000 --workers ${JOBS_API_WORKERS:-2}',
       ]
 
   worker:
@@ -168,6 +178,16 @@ services:
       LLM_JUDGE_MODEL: ${LLM_JUDGE_MODEL:-mistralai/Mistral-Small-3.2-24B-Instruct-2506}
       LLM_JUDGE_API_KEY: ${LLM_JUDGE_API_KEY:-}
       LLM_JUDGE_TIMEOUT_SECONDS: ${LLM_JUDGE_TIMEOUT_SECONDS:-300}
+      ARTIFACT_REMOTE_URI: ${ARTIFACT_REMOTE_URI:-}
+      ARTIFACT_LOCAL_ROOT: ${ARTIFACT_LOCAL_ROOT:-/app}
+      ARTIFACT_REGISTRY_PATH: ${ARTIFACT_REGISTRY_PATH:-artifacts/index_registry.json}
+      ARTIFACT_DVC_REMOTE: ${ARTIFACT_DVC_REMOTE:-artifact_s3}
+      ARTIFACT_SYNC_ON_START: ${ARTIFACT_SYNC_ON_START:-false}
+      ARTIFACT_S3_ENDPOINT_URL: ${ARTIFACT_S3_ENDPOINT_URL:-}
+      AWS_REGION: ${AWS_REGION:-eu-central-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
     volumes:
       - ./data:/app/data
       - ./artifacts:/app/artifacts
@@ -178,7 +198,7 @@ services:
       [
         "sh",
         "-c",
-        "celery -A medical_rag_reranker.jobs.tasks:celery_app worker --loglevel=info --queues=${JOBS_BROKER_QUEUE:-inference_jobs}",
+        'if [ "$${ARTIFACT_SYNC_ON_START:-false}" = "true" ]; then python -m medical_rag_reranker.commands artifact_pull; fi; celery -A medical_rag_reranker.jobs.tasks:celery_app worker --loglevel=info --queues=${JOBS_BROKER_QUEUE:-inference_jobs}',
       ]
 
 volumes:

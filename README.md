@@ -626,6 +626,75 @@ LLM_JUDGE_TIMEOUT_SECONDS=300
 In Kubernetes, keep `LLM_JUDGE_API_KEY` in `k8s/02-secret.yaml`; the other judge
 values can live in `k8s/01-configmap.yaml`.
 
+### DVC S3 Artifact Storage
+
+Use DVC with an S3-compatible remote for runtime data and retrieval artifacts
+that should be shared across deployments. Qdrant remains the live vector search
+service; S3 stores files that the app needs locally, such as processed corpus
+files, BM25/dense/hybrid/graph manifests, and the Qdrant manifest.
+
+Install the S3 plugin before using an S3 remote:
+
+```bash
+poetry add dvc-s3
+```
+
+Default artifact sync includes:
+
+- `data/processed/corpus.jsonl`, `eval_queries.jsonl`, `qrels.tsv`, `splits.json`,
+  and `medquad_graph.json` when present
+- top-level `artifacts/*.json`, `artifacts/*.json.gz`, and `artifacts/*.pkl`
+- `artifacts/hybrid*/**`, `artifacts/graph*/**`, and `artifacts/retriever/**`
+
+Upload local artifacts:
+
+```bash
+export ARTIFACT_REMOTE_URI=s3://your-bucket/medical-rag/medquad-v1
+export ARTIFACT_LOCAL_ROOT=.
+export ARTIFACT_DVC_REMOTE=artifact_s3
+export AWS_REGION=eu-central-1
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+
+poetry run python -m medical_rag_reranker.commands artifact_push
+```
+
+This writes `artifacts/index_registry.json`, runs `dvc remote add --force`,
+`dvc add` for the compact artifact targets, and then `dvc push`.
+
+Download artifacts on another machine or before starting a deployment:
+
+```bash
+ARTIFACT_REMOTE_URI=s3://your-bucket/medical-rag/medquad-v1 \
+ARTIFACT_LOCAL_ROOT=. \
+poetry run python -m medical_rag_reranker.commands artifact_pull
+```
+
+The pull command runs `dvc remote add --force` and `dvc pull`. It requires the
+generated `.dvc` metadata files to be present in the repo or deployment image.
+Commit those `.dvc` files together with the registry after publishing a new
+artifact version.
+
+For Docker Compose, put these values in `.env`:
+
+```bash
+ARTIFACT_REMOTE_URI=s3://your-bucket/medical-rag/medquad-v1
+ARTIFACT_LOCAL_ROOT=/app
+ARTIFACT_REGISTRY_PATH=artifacts/index_registry.json
+ARTIFACT_DVC_REMOTE=artifact_s3
+ARTIFACT_SYNC_ON_START=true
+AWS_REGION=eu-central-1
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_SESSION_TOKEN=
+```
+
+When `ARTIFACT_SYNC_ON_START=true`, both `app` and `worker` run
+`artifact_pull` before starting. In Kubernetes, non-secret values live in
+`k8s/01-configmap.yaml`; AWS access keys live in `k8s/02-secret.yaml`. DVC reads
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_SESSION_TOKEN`
+from the environment.
+
 ---
 
 ## Async-Ready Job Storage

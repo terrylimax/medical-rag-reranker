@@ -21,7 +21,7 @@ spec:
           command:
             - sh
             - -c
-            - uvicorn medical_rag_reranker.asgi:app --host 0.0.0.0 --port 8000 --workers ${JOBS_API_WORKERS:-2}
+            - if [ "${ARTIFACT_SYNC_ON_START:-false}" = "true" ]; then python -m medical_rag_reranker.commands artifact_pull; fi; uvicorn medical_rag_reranker.asgi:app --host 0.0.0.0 --port 8000 --workers ${JOBS_API_WORKERS:-2}
           envFrom:
             - configMapRef:
                 name: medical-rag-config

@@ -33,3 +33,10 @@ data:
   LLM_JUDGE_BASE_URL: ""
   LLM_JUDGE_MODEL: mistralai/Mistral-Small-3.2-24B-Instruct-2506
   LLM_JUDGE_TIMEOUT_SECONDS: "300"
+  ARTIFACT_REMOTE_URI: ""
+  ARTIFACT_LOCAL_ROOT: /app
+  ARTIFACT_REGISTRY_PATH: artifacts/index_registry.json
+  ARTIFACT_DVC_REMOTE: artifact_s3
+  ARTIFACT_SYNC_ON_START: "false"
+  ARTIFACT_S3_ENDPOINT_URL: ""
+  AWS_REGION: eu-central-1
