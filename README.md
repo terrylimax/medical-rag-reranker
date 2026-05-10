@@ -14,8 +14,8 @@ It now contains an end-to-end medical RAG baseline with:
 
 ## Project Scope
 
-The thesis topic is a medical RAG system with hybrid retrieval and graph-aware extensions.
-The current repository already covers the reproducible baseline and most of the evaluation harness:
+This repository implements a medical RAG system with hybrid retrieval and graph-aware extensions.
+The current codebase covers the reproducible baseline and most of the evaluation harness:
 
 - reproducible retrieval corpus / queries / qrels preparation
 - baseline `retriever -> generation`
@@ -23,10 +23,10 @@ The current repository already covers the reproducible baseline and most of the 
 - retrieval-only comparison before and after reranking
 - reference-free answer evaluation for end-to-end RAG runs
 
-What is still future work rather than fully closed functionality:
+Not fully implemented yet:
 
-- training and validating a final thesis-grade reranker checkpoint
-- GraphRAG / graph-structured knowledge integration
+- training and validating a final reranker checkpoint
+- full GraphRAG-style community summaries
 - richer judge backends beyond the current heuristic reference-free scorer
 - production-grade monitoring and scheduling layers such as Prometheus/Grafana or Airflow
 
@@ -47,9 +47,9 @@ Implemented now:
 - `rag_demo`: run a compact end-to-end demo and save markdown / JSONL reports
 - `submit_job`, `job_status`, `job_result`, `serve_jobs_api`: async-ready inference API flow
 
-## Minimal VKR Demo Path
+## Minimal RAG Demo Path
 
-The shortest reproducible path for thesis demonstration is:
+The shortest reproducible end-to-end path is:
 
 1. Prepare retrieval artifacts
 2. Build an index
@@ -75,7 +75,7 @@ poetry run python -m medical_rag_reranker.commands eval_reranked_retrieval \
   --overrides "data.use_dvc=false,retrieval=bm25,retrieval_run.top_k=20,run.eval_reranked_retrieval.reranker_checkpoint_path=/absolute/path/to/reranker.ckpt"
 ```
 
-A focused thesis-oriented walkthrough is available in `docs/vkr_demo.md`.
+A focused walkthrough is available in `docs/rag_demo.md`.
 
 ## Quickstart
 
@@ -104,7 +104,7 @@ A focused thesis-oriented walkthrough is available in `docs/vkr_demo.md`.
 
 ## Reviewer Shortcut: Kubernetes Iteration
 
-If you are validating the Kubernetes assignment rather than the thesis RAG pipeline,
+If you are validating the Kubernetes deployment path rather than the RAG pipeline,
 the fastest path is:
 
 ```bash
@@ -213,7 +213,7 @@ medical-rag-reranker/
 ├── k8s/                      # Kubernetes manifests
 ├── pyproject.toml
 ├── README.md
-└── docs/vkr_demo.md
+└── docs/rag_demo.md
 ```
 
 ---

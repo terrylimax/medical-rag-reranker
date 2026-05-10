@@ -106,7 +106,7 @@ artifacts/experiments/<RUN_ID>/
 - соседние документы добавляются через graph expansion
 - итоговый score агрегируется через RRF-подобный boost
 
-Это честный и воспроизводимый baseline для итоговой работы: графовая часть не использует LLM и не подглядывает в qrels. В тексте работы её лучше описывать как graph-aware candidate expansion, а не как полноразмерный медицинский knowledge graph.
+Это воспроизводимый graph-aware baseline: графовая часть не использует LLM и не подглядывает в qrels. Реализованный метод является graph-aware candidate expansion поверх metadata graph, а не полноразмерным медицинским knowledge graph.
 
 ## 5. Что измерять для generation
 
