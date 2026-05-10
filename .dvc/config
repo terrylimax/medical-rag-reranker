@@ -2,3 +2,6 @@
     remote = local
 ['remote "local"']
     url = ../dvc_storage
+['remote "artifact_s3"']
+    url = s3://dmitrii-todorov-bucket/medical-rag-service/medquad-v1
+    region = eu-north-1

@@ -1,0 +1,124 @@
+{
+  "format": "medical-rag-reranker.artifact-registry",
+  "version": 1,
+  "created_at": "2026-05-10T16:34:16+00:00",
+  "remote_uri": "s3://dmitrii-todorov-bucket/medical-rag-service/medquad-v1",
+  "registry_path": "artifacts/index_registry.json",
+  "files": [
+    {
+      "path": "artifacts/bm25_index.json.gz",
+      "size_bytes": 154,
+      "sha256": "7d9c8627504c4f76948478c23a70e05a2c3cbf958896df2c894487365c854807"
+    },
+    {
+      "path": "artifacts/dense_index.pkl",
+      "size_bytes": 25623089,
+      "sha256": "9e5602c6d49a42d685466f782770030fa8b140e8788fc7dee4496b7ba8508e3f"
+    },
+    {
+      "path": "artifacts/hybrid/hybrid_index.json",
+      "size_bytes": 553,
+      "sha256": "3895b35b392cc4b721c0d82ffcd5b4dffb6f8ee5ede1a75d1346022925e8ff21"
+    },
+    {
+      "path": "artifacts/hybrid_medcpt_pilot/hybrid_index.json",
+      "size_bytes": 630,
+      "sha256": "e8c9cc06b574ab57997366434ccc876ea519ae87ff374802683eb7e3fe396e1f"
+    },
+    {
+      "path": "artifacts/medcpt_pilot_index.pkl",
+      "size_bytes": 50824540,
+      "sha256": "4a8191b28436a5d63a99fe8a7602958095b4669b59c3bf1e2cfa393a5f915a64"
+    },
+    {
+      "path": "artifacts/qdrant_index.json",
+      "size_bytes": 388,
+      "sha256": "cf1ea75fd0289ee40a47b28795fc44d80f0a7ef104bed527126af207b4a5500d"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/doc_encoder/config.json",
+      "size_bytes": 577,
+      "sha256": "2d2539e749f85a7710165a75b228e0355ef7e9e2521554d1a6e5709a8618153f"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/doc_encoder/model.safetensors",
+      "size_bytes": 437951328,
+      "sha256": "bf0c055c48625160c5ee8e7ee4850ab6a4fb4b068b47d263917bcc63f7d5d1d6"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/doc_encoder/special_tokens_map.json",
+      "size_bytes": 695,
+      "sha256": "5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/doc_encoder/tokenizer.json",
+      "size_bytes": 706277,
+      "sha256": "caf33f7a071df3d1a24090506e9b5c8a1704808256619685aa67cd0917827b3e"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/doc_encoder/tokenizer_config.json",
+      "size_bytes": 1518,
+      "sha256": "8219a36214518a8e498553087b9d5e84406ce082e59157fd6dca068cf2f89e8f"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/doc_encoder/vocab.txt",
+      "size_bytes": 226150,
+      "sha256": "79489a52be45e6fa033521e8ce8e4f62aedc0a742ee2aa6fc04667e5b0b1454d"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/query_encoder/config.json",
+      "size_bytes": 577,
+      "sha256": "2d2539e749f85a7710165a75b228e0355ef7e9e2521554d1a6e5709a8618153f"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/query_encoder/model.safetensors",
+      "size_bytes": 437951328,
+      "sha256": "775b228ac921acdb18f48ed9b231c80cbaff7dc3361eadeb4cd657723717a7af"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/query_encoder/special_tokens_map.json",
+      "size_bytes": 695,
+      "sha256": "5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/query_encoder/tokenizer.json",
+      "size_bytes": 706276,
+      "sha256": "734efb9ae9c187ccb42f07331c19321c348cfd29aa61aedf8a0645e478163bf2"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/query_encoder/tokenizer_config.json",
+      "size_bytes": 1518,
+      "sha256": "8219a36214518a8e498553087b9d5e84406ce082e59157fd6dca068cf2f89e8f"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/query_encoder/vocab.txt",
+      "size_bytes": 226150,
+      "sha256": "79489a52be45e6fa033521e8ce8e4f62aedc0a742ee2aa6fc04667e5b0b1454d"
+    },
+    {
+      "path": "artifacts/retriever/medcpt-bi-encoder-pilot/training_summary.json",
+      "size_bytes": 822,
+      "sha256": "28eaf1ca621f2e6cf438d26ba7d79b6b75a2922d14361a4e81c85d8773a7416e"
+    },
+    {
+      "path": "data/processed/corpus.jsonl",
+      "size_bytes": 23088362,
+      "sha256": "18ada60816a5396ce8df70ffaeec9493674d29b32bf362a0b7ccd0f85fdfe6d9"
+    },
+    {
+      "path": "data/processed/eval_queries.jsonl",
+      "size_bytes": 28281,
+      "sha256": "460ee602f5f3ad09fe8c9cda033171060d220a40f22ea2d4c1803eac80588c7e"
+    },
+    {
+      "path": "data/processed/qrels.tsv",
+      "size_bytes": 11704,
+      "sha256": "73d48c4f3f5a8a0e237a174dac7ccfe7ef091ad91934c8fc95038200cd051916"
+    },
+    {
+      "path": "data/processed/splits.json",
+      "size_bytes": 306821,
+      "sha256": "ed1778c100503b8e7f428a2765ab45acaf9729a5b6f18b81a3626cfd4ac14c35"
+    }
+  ]
+}

@@ -149,10 +149,13 @@ def compact_dvc_targets(
     registry_path: str = DEFAULT_REGISTRY_PATH,
 ) -> list[str]:
     root = Path(local_root).resolve()
-    targets: set[str] = {_norm_rel(Path(registry_path))}
+    registry_rel = _norm_rel(Path(registry_path))
+    targets: set[str] = set()
 
     for path in files:
         rel = _norm_rel(path.resolve().relative_to(root))
+        if rel == registry_rel:
+            continue
         parts = rel.split("/")
         if rel.startswith("data/processed/"):
             targets.add("data/processed")

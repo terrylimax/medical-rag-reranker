@@ -1,0 +1,5 @@
+outs:
+- md5: de9cbeeac63640da01c747340d0a9e98
+  size: 154
+  hash: md5
+  path: bm25_index.json.gz

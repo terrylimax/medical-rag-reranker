@@ -44,7 +44,7 @@ def test_compact_dvc_targets_groups_runtime_artifacts(tmp_path: Path) -> None:
     assert "artifacts/qdrant_index.json" in targets
     assert "artifacts/hybrid" in targets
     assert "artifacts/retriever" in targets
-    assert "artifacts/index_registry.json" in targets
+    assert "artifacts/index_registry.json" not in targets
 
 
 def test_push_artifacts_dry_run_returns_dvc_commands(tmp_path: Path) -> None:
@@ -77,4 +77,6 @@ def test_push_artifacts_dry_run_returns_dvc_commands(tmp_path: Path) -> None:
         "region",
         "eu-central-1",
     ] in result["dvc_commands"]
+    dvc_add = next(cmd for cmd in result["dvc_commands"] if cmd[:2] == ["dvc", "add"])
+    assert "artifacts/index_registry.json" not in dvc_add
     assert result["dvc_commands"][-1] == ["dvc", "push", "-r", "artifact_s3"]

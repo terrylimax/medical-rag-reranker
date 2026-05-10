@@ -158,13 +158,16 @@ env.bak/
 venv.bak/
 
 # Data (tracked via DVC)
-/data/
+/data/*
+!/data/*.dvc
 
 # DVC local remote storage (kept out of git)
 /dvc_storage/
 
 # Local experiment artifacts.
-/artifacts/
+/artifacts/*
+!/artifacts/*.dvc
+!/artifacts/index_registry.json
 /mlflow.db
 /mlruns/
 /runs/*.trec
@@ -229,8 +232,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-
-/data/
 
 # DVC metadata should be tracked
 !.dvc/

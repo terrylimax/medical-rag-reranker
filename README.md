@@ -660,7 +660,9 @@ poetry run python -m medical_rag_reranker.commands artifact_push
 ```
 
 This writes `artifacts/index_registry.json`, runs `dvc remote add --force`,
-`dvc add` for the compact artifact targets, and then `dvc push`.
+`dvc add` for the compact artifact targets, and then `dvc push`. The registry
+stays as a small Git-tracked manifest; DVC tracks the larger runtime data and
+artifact files.
 
 Download artifacts on another machine or before starting a deployment:
 

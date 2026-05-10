@@ -1,0 +1,6 @@
+outs:
+- md5: d09a0598d930e79c20a4178748cec6cd.dir
+  size: 630
+  nfiles: 1
+  hash: md5
+  path: hybrid_medcpt_pilot
