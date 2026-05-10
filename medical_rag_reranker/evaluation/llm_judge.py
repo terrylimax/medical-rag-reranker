@@ -69,11 +69,22 @@ def build_judge_messages(
     citations = ", ".join(str(c) for c in result.get("citations_detected", []) or [])
     question = str(result.get("question") or "")
     answer = str(result.get("answer") or "")
+    reference_answer = _as_optional_str(
+        result.get("reference_answer") or result.get("gold_answer")
+    )
+    reference_block = ""
+    if reference_answer:
+        reference_block = (
+            "\n\nReference answer:\n" f"{_truncate(reference_answer, max_doc_chars)}"
+        )
+    reference_separator = "\n\n" if reference_block else ""
 
     system = (
         "You are a strict medical RAG evaluation judge. Evaluate only whether "
         "the answer is supported by the supplied retrieved context. Do not use "
-        "outside medical knowledge to forgive unsupported claims."
+        "outside medical knowledge to forgive unsupported claims. If a reference "
+        "answer is provided, use it to judge relevance and completeness, while "
+        "still requiring generated claims to be supported by retrieved context."
     )
     user = (
         "Score the generated answer using integers from 1 to 5.\n"
@@ -88,6 +99,8 @@ def build_judge_messages(
         "Return JSON only with exactly these keys: faithfulness, relevance, "
         "completeness, safety, verdict, rationale. verdict must be pass or fail.\n\n"
         f"Question:\n{question}\n\n"
+        f"{reference_block}"
+        f"{reference_separator}"
         f"Retrieved context:\n{context}\n\n"
         f"Generated answer:\n{answer}\n\n"
         f"Detected citations:\n{citations if citations else '(none)'}"
