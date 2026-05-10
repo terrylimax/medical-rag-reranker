@@ -225,6 +225,7 @@ def cmd_artifact_pull(
     region: Optional[str] = None,
     endpoint_url: Optional[str] = None,
     overwrite: bool = True,
+    dry_run: bool = False,
     remote_name: Optional[str] = None,
 ) -> dict:
     """Download runtime data/index artifacts from S3-compatible object storage."""
@@ -237,6 +238,7 @@ def cmd_artifact_pull(
         region=region,
         endpoint_url=endpoint_url,
         overwrite=overwrite,
+        dry_run=dry_run,
         remote_name=remote_name,
     )
     print(json.dumps(registry, ensure_ascii=False, indent=2))

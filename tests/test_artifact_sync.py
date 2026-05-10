@@ -4,6 +4,7 @@ from medical_rag_reranker.artifacts.sync import (
     REGISTRY_FORMAT,
     compact_dvc_targets,
     collect_artifact_files,
+    pull_artifacts,
     push_artifacts,
 )
 
@@ -80,3 +81,20 @@ def test_push_artifacts_dry_run_returns_dvc_commands(tmp_path: Path) -> None:
     dvc_add = next(cmd for cmd in result["dvc_commands"] if cmd[:2] == ["dvc", "add"])
     assert "artifacts/index_registry.json" not in dvc_add
     assert result["dvc_commands"][-1] == ["dvc", "push", "-r", "artifact_s3"]
+
+
+def test_pull_artifacts_can_use_existing_dvc_remote_without_remote_uri(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("ARTIFACT_REMOTE_URI", raising=False)
+
+    result = pull_artifacts(
+        local_root=tmp_path,
+        remote_name="artifact_s3",
+        dry_run=True,
+    )
+
+    assert result["dry_run"] is True
+    assert result["dvc_remote"] == "artifact_s3"
+    assert result["remote_uri"] == ""
+    assert result["dvc_commands"] == [["dvc", "pull", "-r", "artifact_s3"]]

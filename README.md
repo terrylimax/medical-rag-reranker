@@ -672,10 +672,11 @@ ARTIFACT_LOCAL_ROOT=. \
 poetry run python -m medical_rag_reranker.commands artifact_pull
 ```
 
-The pull command runs `dvc remote add --force` and `dvc pull`. It requires the
-generated `.dvc` metadata files to be present in the repo or deployment image.
-Commit those `.dvc` files together with the registry after publishing a new
-artifact version.
+When `ARTIFACT_REMOTE_URI` is set, the pull command runs
+`dvc remote add --force` before `dvc pull`. If it is not set, it uses the
+existing DVC remote from `.dvc/config`. It requires the generated `.dvc`
+metadata files to be present in the repo or deployment image. Commit those
+`.dvc` files together with the registry after publishing a new artifact version.
 
 For Docker Compose, put these values in `.env`:
 

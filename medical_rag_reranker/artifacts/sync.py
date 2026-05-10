@@ -293,38 +293,48 @@ def pull_artifacts(
     endpoint_url: str | None = None,
     overwrite: bool = True,
     remote_name: str | None = None,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
-    remote = _remote_uri_or_env(remote_uri)
+    remote = remote_uri or os.getenv("ARTIFACT_REMOTE_URI")
     root = Path(local_root or os.getenv("ARTIFACT_LOCAL_ROOT") or ".").resolve()
     registry_rel = registry_path or os.getenv(
         "ARTIFACT_REGISTRY_PATH", DEFAULT_REGISTRY_PATH
     )
     dvc_remote = remote_name or os.getenv("ARTIFACT_DVC_REMOTE", DEFAULT_DVC_REMOTE)
 
-    commands = configure_dvc_remote(
-        remote_uri=remote,
-        local_root=root,
-        remote_name=dvc_remote,
-        region=region,
-        endpoint_url=endpoint_url,
-    )
+    commands: list[list[str]] = []
+    if remote:
+        commands.extend(
+            configure_dvc_remote(
+                remote_uri=remote,
+                local_root=root,
+                remote_name=dvc_remote,
+                region=region,
+                endpoint_url=endpoint_url,
+                dry_run=dry_run,
+            )
+        )
     pull_cmd = ["dvc", "pull", "-r", dvc_remote]
     if not overwrite:
         pull_cmd.append("--no-run-cache")
-    commands.append(_run(pull_cmd, cwd=root))
+    commands.append(_run(pull_cmd, cwd=root, dry_run=dry_run))
 
     registry_file = root / registry_rel
     registry: dict[str, Any] = {
         "format": REGISTRY_FORMAT,
         "version": 1,
-        "remote_uri": remote,
+        "remote_uri": remote or "",
         "registry_path": registry_rel,
         "dvc_remote": dvc_remote,
         "dvc_commands": commands,
     }
+    if dry_run:
+        registry["dry_run"] = True
     if registry_file.exists():
         loaded = json.loads(registry_file.read_text(encoding="utf-8"))
         if loaded.get("format") == REGISTRY_FORMAT:
             registry.update(loaded)
             registry["dvc_commands"] = commands
+            if dry_run:
+                registry["dry_run"] = True
     return registry
