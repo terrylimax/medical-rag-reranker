@@ -108,6 +108,10 @@ services:
       VLLM_API_KEY: ${VLLM_API_KEY:-}
       VLLM_API_TYPE: ${VLLM_API_TYPE:-chat}
       VLLM_TIMEOUT_SECONDS: ${VLLM_TIMEOUT_SECONDS:-120}
+      LLM_JUDGE_BASE_URL: ${LLM_JUDGE_BASE_URL:-}
+      LLM_JUDGE_MODEL: ${LLM_JUDGE_MODEL:-mistralai/Mistral-Small-3.2-24B-Instruct-2506}
+      LLM_JUDGE_API_KEY: ${LLM_JUDGE_API_KEY:-}
+      LLM_JUDGE_TIMEOUT_SECONDS: ${LLM_JUDGE_TIMEOUT_SECONDS:-300}
     volumes:
       - ./data:/app/data
       - ./artifacts:/app/artifacts
@@ -160,6 +164,10 @@ services:
       VLLM_API_KEY: ${VLLM_API_KEY:-}
       VLLM_API_TYPE: ${VLLM_API_TYPE:-chat}
       VLLM_TIMEOUT_SECONDS: ${VLLM_TIMEOUT_SECONDS:-120}
+      LLM_JUDGE_BASE_URL: ${LLM_JUDGE_BASE_URL:-}
+      LLM_JUDGE_MODEL: ${LLM_JUDGE_MODEL:-mistralai/Mistral-Small-3.2-24B-Instruct-2506}
+      LLM_JUDGE_API_KEY: ${LLM_JUDGE_API_KEY:-}
+      LLM_JUDGE_TIMEOUT_SECONDS: ${LLM_JUDGE_TIMEOUT_SECONDS:-300}
     volumes:
       - ./data:/app/data
       - ./artifacts:/app/artifacts
