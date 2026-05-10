@@ -50,11 +50,14 @@ def test_build_judge_messages_includes_context_and_answer() -> None:
             "question": "What is metformin used for?",
             "retrieved": [{"doc_id": "doc1", "text": "Metformin treats diabetes."}],
             "answer": "Metformin treats diabetes [doc1].",
+            "reference_answer": "Metformin is used to treat type 2 diabetes.",
             "citations_detected": ["doc1"],
         }
     )
 
     joined = "\n".join(message["content"] for message in messages)
     assert "What is metformin used for?" in joined
+    assert "Reference answer" in joined
+    assert "type 2 diabetes" in joined
     assert "[doc1] Metformin treats diabetes." in joined
     assert "Metformin treats diabetes [doc1]." in joined

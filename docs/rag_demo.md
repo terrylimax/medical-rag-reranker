@@ -1,6 +1,6 @@
-# VKR Demo Guide
+# RAG Demo Guide
 
-This document describes the shortest reproducible flow to demonstrate the thesis-relevant functionality already implemented in this repository.
+This document describes the shortest reproducible flow for the RAG functionality implemented in this repository.
 
 ## What This Demo Covers
 
@@ -140,22 +140,22 @@ Expected artifacts:
 - `reports/bm25_reranked_comparison.jsonl`
 - MLflow run under experiment `reranked_retrieval_eval`
 
-## How To Present This In The Thesis
+## Implemented Flow Summary
 
-A compact and defensible narrative is:
+The implemented flow covers:
 
-1. Show reproducible data preparation for retrieval evaluation.
-2. Show baseline retrieval metrics.
-3. Show end-to-end answer generation with citations.
-4. Show reference-free evaluation of generated answers.
-5. Show reranked retrieval comparison once a trained checkpoint is available.
+1. Reproducible data preparation for retrieval evaluation.
+2. Baseline retrieval metrics.
+3. End-to-end answer generation with citations.
+4. Reference-free evaluation of generated answers.
+5. Reranked retrieval comparison when a trained checkpoint is available.
 
-This is enough to demonstrate that the baseline experimental framework already exists.
-Airflow, GraphRAG, and additional infrastructure should be presented as next steps, not as prerequisites for validating the current baseline.
+This flow exercises the baseline experimental framework.
+Airflow, full GraphRAG community summaries, and additional infrastructure are not prerequisites for the current baseline.
 
-## Recommended Next Steps
+## Open Implementation Items
 
-If the goal is to strengthen the thesis demonstration rather than add infrastructure noise, the next priorities are:
+The current implementation still has these open items:
 
 1. Train and validate the reranker checkpoint.
 2. Compare `baseline` vs `reranked` runs on the same eval set.
