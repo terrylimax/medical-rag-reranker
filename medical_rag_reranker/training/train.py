@@ -13,8 +13,10 @@ from medical_rag_reranker.utils.git import get_git_commit_id
 
 def train_from_cfg(cfg: DictConfig) -> None:
     """Train the reranker using a Hydra/OmegaConf config."""
+    print("Reranker training: initialize seed", flush=True)
     pl.seed_everything(int(cfg.train.seed), workers=True)
 
+    print("Reranker training: initialize MLflow logger", flush=True)
     mlf_logger = MLFlowLogger(
         tracking_uri=str(cfg.logging.tracking_uri),
         experiment_name=str(cfg.logging.experiment_name),
@@ -53,7 +55,17 @@ def train_from_cfg(cfg: DictConfig) -> None:
         "git.commit_id": get_git_commit_id(),
     }
     mlf_logger.log_hyperparams(hparams)
+    print(
+        "Reranker training config: "
+        f"epochs={cfg.train.max_epochs}, "
+        f"batch_size={cfg.train.batch_size}, "
+        f"train_batches={getattr(cfg.train, 'limit_train_batches', 1.0)}, "
+        f"val_batches={getattr(cfg.train, 'limit_val_batches', 1.0)}, "
+        f"tracking_uri={cfg.logging.tracking_uri}",
+        flush=True,
+    )
 
+    print("Reranker training: build datamodule", flush=True)
     datamodule = RerankerDataModule(
         raw_dir=str(cfg.data.raw_dir),
         processed_dir=str(cfg.data.processed_dir),
@@ -67,6 +79,7 @@ def train_from_cfg(cfg: DictConfig) -> None:
         seed=int(cfg.train.seed),
     )
 
+    print("Reranker training: load cross-encoder model", flush=True)
     model = CrossEncoderReranker(
         model_name=str(cfg.model.model_name),
         lr=float(cfg.train.lr),
@@ -81,6 +94,7 @@ def train_from_cfg(cfg: DictConfig) -> None:
             )
         )
 
+    print("Reranker training: initialize trainer", flush=True)
     trainer = pl.Trainer(
         max_epochs=int(cfg.train.max_epochs),
         accelerator=str(cfg.train.accelerator),
@@ -94,7 +108,9 @@ def train_from_cfg(cfg: DictConfig) -> None:
         callbacks=callbacks,
     )
 
+    print("Reranker training: start Trainer.fit", flush=True)
     trainer.fit(model, datamodule=datamodule)
+    print("Reranker training: Trainer.fit completed", flush=True)
     checkpoint_callback = getattr(trainer, "checkpoint_callback", None)
     best_path = getattr(checkpoint_callback, "best_model_path", "") or ""
     last_path = getattr(checkpoint_callback, "last_model_path", "") or ""

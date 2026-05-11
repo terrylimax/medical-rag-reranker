@@ -7,7 +7,10 @@ from typing import Optional, Sequence
 import fire
 from omegaconf import DictConfig
 
-from medical_rag_reranker.data.dvc_data import ensure_data
+from medical_rag_reranker.data.dvc_data import (
+    ensure_data,
+    has_prepared_training_artifacts,
+)
 from medical_rag_reranker.data.scripts.prepare_data import prepare_data
 from medical_rag_reranker.utils.hydra_cfg import load_cfg
 
@@ -113,8 +116,18 @@ def cmd_train(
 
     cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
 
-    # Ensure data exists (DVC pull -> fallback download)
-    ensure_data(cfg)
+    processed_dir = Path(str(cfg.data.processed_dir))
+    if bool(getattr(cfg.data, "prefer_prepared_artifacts", False)) and (
+        has_prepared_training_artifacts(processed_dir)
+    ):
+        print(
+            f"Prepared training artifacts found in {processed_dir}; "
+            "skipping raw data ensure.",
+            flush=True,
+        )
+    else:
+        print("Ensuring raw training data is available...", flush=True)
+        ensure_data(cfg)
 
     # Run training
     train_from_cfg(cfg)

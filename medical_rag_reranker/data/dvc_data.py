@@ -21,6 +21,16 @@ def _has_required_raw_artifacts(raw_dir: Path) -> bool:
     return any(p.exists() for p in required_any)
 
 
+def has_prepared_training_artifacts(processed_dir: Path) -> bool:
+    """Check whether reranker training can use prepared processed artifacts."""
+    required = (
+        processed_dir / "qa.jsonl",
+        processed_dir / "corpus.jsonl",
+        processed_dir / "splits.json",
+    )
+    return all(path.is_file() and path.stat().st_size > 0 for path in required)
+
+
 def ensure_data(cfg: DictConfig) -> None:
     """Ensure data exists locally.
 
