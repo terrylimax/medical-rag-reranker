@@ -15,6 +15,7 @@ class CrossEncoderReranker(pl.LightningModule):
         self.save_hyperparameters()
 
         self.encoder = AutoModel.from_pretrained(model_name)
+        self.encoder.train()
         hidden = self.encoder.config.hidden_size
         self.classifier = nn.Linear(hidden, 1)
         self.loss_fn = nn.BCEWithLogitsLoss()
