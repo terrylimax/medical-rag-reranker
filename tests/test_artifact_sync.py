@@ -38,6 +38,10 @@ def test_compact_dvc_targets_groups_runtime_artifacts(tmp_path: Path) -> None:
     _write(tmp_path / "data/processed/eval_queries.jsonl", '{"query_id":"q1"}\n')
     _write(tmp_path / "artifacts/qdrant_index.json", '{"format":"qdrant"}')
     _write(tmp_path / "artifacts/hybrid/hybrid_index.json", "{}")
+    _write(
+        tmp_path / "artifacts/experiments/run-1/models/reranker/best.ckpt",
+        "checkpoint",
+    )
     _write(tmp_path / "artifacts/retriever/model/config.json", "{}")
 
     files = collect_artifact_files(tmp_path)
@@ -46,6 +50,8 @@ def test_compact_dvc_targets_groups_runtime_artifacts(tmp_path: Path) -> None:
     assert "data/processed" in targets
     assert "artifacts/qdrant_index.json" in targets
     assert "artifacts/hybrid" in targets
+    assert "artifacts/experiments/run-1" in targets
+    assert "artifacts/experiments/run-1/models/reranker/best.ckpt" not in targets
     assert "artifacts/retriever" in targets
     assert "artifacts/index_registry.json" not in targets
 

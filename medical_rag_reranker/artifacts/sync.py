@@ -163,6 +163,8 @@ def compact_dvc_targets(
         elif len(parts) >= 3 and parts[0] == "artifacts":
             if parts[1].startswith("hybrid") or parts[1].startswith("graph"):
                 targets.add("/".join(parts[:2]))
+            elif parts[1] == "experiments" and len(parts) >= 3:
+                targets.add("/".join(parts[:3]))
             elif parts[1] == "retriever":
                 targets.add("artifacts/retriever")
             else:
