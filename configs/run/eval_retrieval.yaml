@@ -9,7 +9,7 @@ run_path: null
 retrieve_cmd: null
 out_run: ${paths.runs_dir}/${retrieval.name}.trec
 
-ks: "1,5,10,20,50"
+ks: "1,3,5,10"
 run_name: ${retrieval.name}
 experiment: retrieval_eval
 mlflow_uri: null

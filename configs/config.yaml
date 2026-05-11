@@ -25,4 +25,5 @@ defaults:
   - run@run.eval_generation: eval_generation
   - run@run.eval_reranked_retrieval: eval_reranked_retrieval
   - run@run.rag_demo: rag_demo
+  - run@run.experiment_matrix: experiment_matrix
   - _self_

@@ -1,13 +1,30 @@
 # Colab Experiment Plan
 
-Этот план рассчитан на три Colab-запуска: обучение/индексация, retrieval benchmark, generation quality benchmark.
+Этот план рассчитан на четыре Colab-запуска: обучение retriever/indexing, обучение
+reranker, retrieval benchmark, generation quality benchmark. Colab используется как
+официальный GPU-training формат; локальный runner и Airflow должны брать готовые
+артефакты из S3/DVC.
 
 ## 1. Где хранить артефакты
 
 Источник истины после Colab:
 
 ```text
-/content/drive/MyDrive/medical-rag-reranker-colab/<RUN_ID>/
+s3://<bucket>/medical-rag-service/medquad-v1
+```
+
+DVC remote в проекте:
+
+```text
+ARTIFACT_DVC_REMOTE=artifact_s3
+```
+
+Google Drive можно оставить как optional Colab cache, но он не должен быть
+главным storage для финального pipeline. Рабочая структура внутри Colab может
+оставаться такой:
+
+```text
+/content/medical-rag-reranker-colab/<RUN_ID>/
 ├── manifest.json
 ├── data/
 │   └── processed/
@@ -52,31 +69,40 @@ artifacts/experiments/<RUN_ID>/
 └── summaries/
 ```
 
-Если файлы крупные, не коммить `.pkl` и encoder directories напрямую в Git. Хранить их через Drive/DVC, а в репозитории держать `manifest.json`, summary tables и отчёты.
+Если файлы крупные, не коммить `.pkl`, `.ckpt` и encoder directories напрямую
+в Git. Хранить их через DVC/S3, а в репозитории держать только `.dvc` metadata,
+manifest, summary tables и отчёты.
 
 ## 2. Порядок запуска
 
 1. Открыть `colab/01_train_retriever_and_build_indices.ipynb`.
 2. Включить GPU: `Runtime -> Change runtime type -> T4/A100`.
 3. Задать `RUN_ID`, например `medquad_full_v1`.
-4. Запустить notebook сверху вниз.
-5. Проверить, что появился `manifest.json` и все индексы в `artifacts/indices`.
-6. Открыть `colab/02_benchmark_retrieval_reranker_graph.ipynb` с тем же `RUN_ID`.
-7. Если есть checkpoint cross-encoder reranker, задать env `RERANKER_CHECKPOINT_PATH` или переменную в notebook.
-8. Запустить benchmark. Итоговая таблица будет в `runs/summaries/retrieval_benchmark_summary.csv`.
-9. Открыть `colab/03_evaluate_generation_quality.ipynb`.
-10. Запустить generation benchmark. Итоговая таблица будет в `runs/summaries/generation_quality_summary.csv`.
+4. Настроить AWS/DVC переменные в Colab secrets или environment.
+5. Запустить notebook сверху вниз: он должен сделать `artifact_pull`, обучение
+   bi-encoder, build indices и `artifact_push`.
+6. Открыть `colab/04_train_reranker_colab.ipynb` с тем же `RUN_ID`.
+7. Запустить reranker training на GPU и сохранить checkpoint через DVC/S3.
+8. Открыть `colab/02_benchmark_retrieval_reranker_graph.ipynb` с тем же `RUN_ID`.
+9. Если есть checkpoint cross-encoder reranker, задать env
+   `RERANKER_CHECKPOINT_PATH` или переменную в notebook.
+10. Запустить benchmark. Итоговая таблица будет в
+    `runs/summaries/retrieval_benchmark_summary.csv`.
+11. Открыть `colab/03_evaluate_generation_quality.ipynb`.
+12. Запустить generation benchmark. Итоговая таблица будет в
+    `runs/summaries/generation_quality_summary.csv`.
 
 ## 3. Что измерять для retrieval
 
 Основные метрики:
 
-- `NDCG@10`, `NDCG@20`, `NDCG@50`
-- `R@10`, `R@20`, `R@50`
-- `P@5`, `P@10`
-- `Hit@10`, `MRR@10`
+- `Hit@1`, `Hit@3`, `Hit@5`
+- `MRR@10`
 - `latency_mean_ms`, `latency_p95_ms`
 - `index_size_mb`
+
+`NDCG@10` остается secondary diagnostic metric. `P@10` и `R@10` не
+используются в основных таблицах ВКР.
 
 Методы:
 

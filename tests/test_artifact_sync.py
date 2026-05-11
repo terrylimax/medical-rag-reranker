@@ -18,6 +18,7 @@ def test_collect_artifact_files_uses_runtime_defaults(tmp_path: Path) -> None:
     _write(tmp_path / "data/processed/corpus.jsonl", "{}\n")
     _write(tmp_path / "artifacts/bm25_index.json.gz", "index")
     _write(tmp_path / "artifacts/hybrid/hybrid_index.json", "{}")
+    _write(tmp_path / "artifacts/experiments/run-1/e2e_summary.csv", "method\nbm25\n")
     _write(tmp_path / "reports/eval_generation.md", "report")
     _write(tmp_path / "artifacts/retriever_training/train.jsonl", "{}")
 
@@ -27,6 +28,7 @@ def test_collect_artifact_files_uses_runtime_defaults(tmp_path: Path) -> None:
     assert "data/processed/corpus.jsonl" in rels
     assert "artifacts/bm25_index.json.gz" in rels
     assert "artifacts/hybrid/hybrid_index.json" in rels
+    assert "artifacts/experiments/run-1/e2e_summary.csv" in rels
     assert "reports/eval_generation.md" not in rels
     assert "artifacts/retriever_training/train.jsonl" not in rels
 

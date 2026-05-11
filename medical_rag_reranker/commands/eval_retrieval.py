@@ -7,6 +7,7 @@ import json
 import math
 import shlex
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -26,11 +27,15 @@ def _as_optional_str(value: object) -> str | None:
     return text
 
 
-def _parse_ks(ks: str | List[int]) -> List[int]:
-    if isinstance(ks, list):
+def _parse_ks(ks: str | Iterable[int]) -> List[int]:
+    if not isinstance(ks, str) and isinstance(ks, Iterable):
         values = [int(v) for v in ks]
     else:
-        values = [int(x.strip()) for x in str(ks).split(",") if x.strip()]
+        text = str(ks).strip()
+        if text.startswith("[") and text.endswith("]"):
+            values = [int(v) for v in json.loads(text)]
+        else:
+            values = [int(x.strip()) for x in text.split(",") if x.strip()]
     if not values:
         raise ValueError("ks is empty")
     if any(v <= 0 for v in values):
@@ -450,7 +455,7 @@ def run_from_cfg(cfg: DictConfig) -> Dict[str, float]:
         run_path=run_path,
         retrieve_cmd=retrieve_cmd,
         out_run=Path(str(run_cfg.out_run)),
-        ks=str(run_cfg.ks),
+        ks=run_cfg.ks,
         run_name=str(run_cfg.run_name),
         experiment=str(run_cfg.experiment),
         mlflow_uri=_as_optional_str(run_cfg.mlflow_uri),

@@ -25,6 +25,7 @@ DEFAULT_INCLUDE_PATTERNS = (
     "artifacts/*.pkl",
     "artifacts/hybrid*/**/*",
     "artifacts/graph*/**/*",
+    "artifacts/experiments/**/*",
     "artifacts/retriever/**/*",
 )
 
