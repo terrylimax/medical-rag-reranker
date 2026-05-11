@@ -165,8 +165,10 @@ venv.bak/
 /dvc_storage/
 
 # Local experiment artifacts.
-/artifacts/*
+/artifacts/**
+!/artifacts/**/
 !/artifacts/*.dvc
+!/artifacts/**/*.dvc
 !/artifacts/index_registry.json
 /mlflow.db
 /mlruns/
