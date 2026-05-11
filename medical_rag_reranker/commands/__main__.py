@@ -45,6 +45,7 @@ def main() -> None:
     - python -m medical_rag_reranker.commands serve_jobs_api
     - python -m medical_rag_reranker.commands artifact_push
     - python -m medical_rag_reranker.commands artifact_pull
+    - python -m medical_rag_reranker.commands experiment_matrix
 
     Examples:
     - python -m medical_rag_reranker.commands download_data
@@ -93,6 +94,7 @@ def main() -> None:
             "serve_jobs_api": cmd_serve_jobs_api,
             "artifact_push": cmd_artifact_push,
             "artifact_pull": cmd_artifact_pull,
+            "experiment_matrix": cmd_experiment_matrix,
         }
     )
 
@@ -243,6 +245,33 @@ def cmd_artifact_pull(
     )
     print(json.dumps(registry, ensure_ascii=False, indent=2))
     return registry
+
+
+def cmd_experiment_matrix(
+    profile: str = "smoke",
+    stage: str = "all",
+    run_id: Optional[str] = None,
+    resume: bool = True,
+    dry_run: bool = False,
+    training_mode: str = "colab_artifacts",
+    config_dir: Optional[str] = None,
+    overrides: Optional[str] = None,
+) -> dict:
+    """Run or plan full retrieval/generation experiment sweeps."""
+    from medical_rag_reranker.experiments.matrix import run_experiment_matrix
+
+    cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
+    result = run_experiment_matrix(
+        cfg,
+        profile=profile,
+        stage=stage,
+        run_id=run_id,
+        resume=resume,
+        dry_run=dry_run,
+        training_mode=training_mode,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
 
 
 def _build_job_runtime(cfg: DictConfig):

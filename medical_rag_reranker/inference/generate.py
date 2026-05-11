@@ -712,9 +712,10 @@ def generate_from_cfg(
     effective_queries = _as_optional_str(queries_path) or str(
         cfg.generation.queries_path
     )
+    examples_limit = int(getattr(cfg.generation, "examples_limit", 20))
     queries_rows = _load_queries(
         path=Path(effective_queries),
-        limit=int(getattr(cfg.generation, "examples_limit", 20)),
+        limit=None if examples_limit <= 0 else examples_limit,
     )
 
     results: list[dict[str, Any]] = []

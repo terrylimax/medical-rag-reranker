@@ -56,7 +56,7 @@ NOTEBOOK_01 = [
         """
         # 01: Train Retriever And Build Indices
 
-        Цель: подготовить данные, дообучить MedCPT bi-encoder на hard negatives, построить все базовые индексы retrieval и сохранить их в Google Drive так, чтобы их можно было переиспользовать в следующих Colab-сессиях и в локальном проекте.
+        Цель: подготовить данные, дообучить MedCPT bi-encoder на hard negatives, построить все базовые индексы retrieval, сохранить промежуточные результаты в Google Drive как Colab cache и выгрузить финальные артефакты в S3/DVC через `artifact_push`.
 
         Основные выходы:
         - `data/processed`: `qa.jsonl`, `corpus.jsonl`, `splits.json`, `eval_queries.jsonl`, `qrels.tsv`

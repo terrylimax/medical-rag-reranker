@@ -626,6 +626,46 @@ LLM_JUDGE_TIMEOUT_SECONDS=300
 In Kubernetes, keep `LLM_JUDGE_API_KEY` in `k8s/02-secret.yaml`; the other judge
 values can live in `k8s/01-configmap.yaml`.
 
+## Full Experiment Matrix
+
+The project includes a reproducible experiment runner for full retrieval,
+reranker, generation, and judge comparisons. Colab is the GPU-training format;
+local CLI and Airflow reuse the same S3/DVC artifacts.
+
+Plan a smoke run without touching remote services:
+
+```bash
+poetry run python -m medical_rag_reranker.commands experiment_matrix \
+  --profile smoke \
+  --stage all \
+  --run_id smoke_matrix \
+  --training_mode colab_artifacts \
+  --dry_run true
+```
+
+Run the full remote profile after Colab has pushed trained artifacts:
+
+```bash
+poetry run python -m medical_rag_reranker.commands experiment_matrix \
+  --profile full_remote \
+  --stage all \
+  --run_id medquad_full_remote \
+  --training_mode colab_artifacts \
+  --resume true
+```
+
+Outputs are written under `artifacts/experiments/<run_id>/`, including
+`manifest.json`, `planned_jobs.jsonl`, raw per-query JSONL files,
+`e2e_summary.csv`, `best_configs.json`, and `comparison_report.md`.
+
+The primary retrieval metrics in final summaries are `Hit@1`, `Hit@3`,
+`Hit@5`, `MRR@10`, and latency p50/p95. `P@10` and `R@10` are intentionally not
+used as primary summary metrics.
+
+An Airflow DAG is available at `airflow/dags/full_experiment_matrix.py`. It
+runs the same CLI stages: artifact pull, preflight, train, index, retrieval
+evaluation, generation evaluation, summary, and artifact push.
+
 ### DVC S3 Artifact Storage
 
 Use DVC with an S3-compatible remote for runtime data and retrieval artifacts
@@ -644,7 +684,8 @@ Default artifact sync includes:
 - `data/processed/corpus.jsonl`, `eval_queries.jsonl`, `qrels.tsv`, `splits.json`,
   and `medquad_graph.json` when present
 - top-level `artifacts/*.json`, `artifacts/*.json.gz`, and `artifacts/*.pkl`
-- `artifacts/hybrid*/**`, `artifacts/graph*/**`, and `artifacts/retriever/**`
+- `artifacts/hybrid*/**`, `artifacts/graph*/**`, `artifacts/experiments/**`,
+  and `artifacts/retriever/**`
 
 Upload local artifacts:
 

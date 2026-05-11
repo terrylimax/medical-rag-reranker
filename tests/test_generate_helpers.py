@@ -44,6 +44,14 @@ def test_query_helpers_support_text_and_question_keys() -> None:
     assert generation_module._resolve_query_id({"question_id": "q2"}, 1) == "q2"
 
 
+def test_load_queries_none_limit_reads_all_rows(tmp_path) -> None:
+    path = tmp_path / "queries.jsonl"
+    path.write_text('{"query_id":"q1"}\n{"query_id":"q2"}\n', encoding="utf-8")
+
+    assert len(generation_module._load_queries(path, limit=None)) == 2
+    assert len(generation_module._load_queries(path, limit=1)) == 1
+
+
 def test_run_one_question_tracks_latency_and_supported_citations() -> None:
     docstore = {
         "doc1": {
