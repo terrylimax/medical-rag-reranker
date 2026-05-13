@@ -61,6 +61,33 @@ def test_experiment_matrix_ks_override_is_hydra_safe(tmp_path: Path) -> None:
     assert list(index_cfg.run.eval_retrieval.ks) == [1, 3, 5, 10]
 
 
+def test_graph_retrieval_index_configs_resolve_shared_fusion_fields() -> None:
+    graph_bm25 = load_cfg(overrides=["retrieval=graph_bm25"])
+    graph_hybrid = load_cfg(overrides=["retrieval=graph_hybrid"])
+    graph_qdrant = load_cfg(
+        overrides=[
+            "retrieval.base_retriever=dense",
+            "retrieval.vector_backend=qdrant",
+            "retrieval=graph_bm25",
+        ]
+    )
+    graph_hybrid_qdrant = load_cfg(
+        overrides=[
+            "retrieval.base_retriever=hybrid",
+            "retrieval.dense_backend=qdrant",
+            "run.retrieval_index.dense_backend=qdrant",
+            "retrieval=graph_hybrid",
+        ]
+    )
+
+    assert graph_bm25.run.retrieval_index.fusion == "score"
+    assert graph_bm25.run.retrieval_index.rrf_k == 60
+    assert graph_hybrid.run.retrieval_index.fusion == "rrf"
+    assert graph_hybrid.run.retrieval_index.rrf_k == 60
+    assert graph_qdrant.retrieval.vector_backend == "qdrant"
+    assert graph_hybrid_qdrant.retrieval.dense_backend == "qdrant"
+
+
 def test_experiment_manifest_masks_secret_env(
     tmp_path: Path,
     monkeypatch,
@@ -180,6 +207,7 @@ def test_e2e_summary_uses_primary_metrics_and_generation_latencies(
             {
                 "status": "completed",
                 "method": "bm25",
+                "generation_remote_concurrency": 2,
                 "overrides": [
                     "retrieval=bm25",
                     "generation.top_k=5",
@@ -201,7 +229,9 @@ def test_e2e_summary_uses_primary_metrics_and_generation_latencies(
     assert rows[0]["hit@1"] == "0.4"
     assert rows[0]["mrr@10"] == "0.55"
     assert rows[0]["answer_pass_rate"] == "0.9"
-    assert rows[0]["generation_latency_p50_ms"] == "15.0"
+    assert rows[0]["generation_remote_concurrency"] == "2.0"
+    assert rows[0]["generation_latency_p50_ms"] == "7.5"
+    assert rows[0]["e2e_latency_p50_ms"] == "20.0"
     assert "P@10" not in rows[0]
     assert "R@10" not in rows[0]
 

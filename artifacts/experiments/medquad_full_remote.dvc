@@ -1,0 +1,6 @@
+outs:
+- md5: b0ff5333fb8e94c2961dac192383cc26.dir
+  size: 1309324673
+  nfiles: 1
+  hash: md5
+  path: medquad_full_remote

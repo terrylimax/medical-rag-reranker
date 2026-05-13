@@ -300,6 +300,9 @@ def run_eval_generation(cfg: DictConfig) -> dict[str, float]:
         enriched_results.append(enriched)
 
     summary = summarize_generation_evaluations(enriched_results)
+    summary["generation_remote_concurrency"] = float(
+        int(getattr(cfg.generation, "remote_concurrency", 1))
+    )
 
     output_jsonl = Path(str(run_cfg.output_jsonl))
     summary_json = Path(str(run_cfg.summary_json))
@@ -329,6 +332,7 @@ def run_eval_generation(cfg: DictConfig) -> dict[str, float]:
             "top_k": int(cfg.generation.top_k),
             "retrieve_top_k": int(cfg.generation.retrieve_top_k),
             "llm_model_name": str(cfg.generation.llm_model_name),
+            "remote_concurrency": int(getattr(cfg.generation, "remote_concurrency", 1)),
             "local_files_only": bool(
                 getattr(cfg.generation, "local_files_only", False)
             ),

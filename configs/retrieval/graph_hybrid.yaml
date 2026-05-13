@@ -4,8 +4,11 @@ index_file: graph_hybrid/graph_index.json
 base_retriever: hybrid
 graph_path: ${run.prep_data.out_dir}/medquad_graph.json
 
+dense_backend: ${oc.env:RETRIEVAL_DENSE_BACKEND,dense}
+fusion: rrf
 alpha: 0.6
 cand_k: 50
+rrf_k: 60
 seed_k: 20
 expand_k: 50
 max_hops: 2

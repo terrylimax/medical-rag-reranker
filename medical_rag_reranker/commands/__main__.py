@@ -39,6 +39,7 @@ def main() -> None:
     - python -m medical_rag_reranker.commands train_retriever
     - python -m medical_rag_reranker.commands eval_retrieval
     - python -m medical_rag_reranker.commands eval_generation
+    - python -m medical_rag_reranker.commands judge_generation_sample
     - python -m medical_rag_reranker.commands eval_reranked_retrieval
     - python -m medical_rag_reranker.commands rag_demo
     - python -m medical_rag_reranker.commands submit_job
@@ -88,6 +89,7 @@ def main() -> None:
             "train_retriever": cmd_train_retriever,
             "eval_retrieval": cmd_eval_retrieval,
             "eval_generation": cmd_eval_generation,
+            "judge_generation_sample": cmd_judge_generation_sample,
             "eval_reranked_retrieval": cmd_eval_reranked_retrieval,
             "rag_demo": cmd_rag_demo,
             "submit_job": cmd_submit_job,
@@ -516,6 +518,41 @@ def cmd_eval_generation(
     metrics = run_eval_generation(cfg)
     print(json.dumps(metrics, ensure_ascii=False, indent=2))
     return metrics
+
+
+def cmd_judge_generation_sample(
+    run_id: str = "e2e_practical_20260512",
+    input_dir: Optional[str] = None,
+    output_dir: Optional[str] = None,
+    examples_limit: int = 5,
+    pattern: str = "*.raw.jsonl",
+    max_files: Optional[int] = None,
+    concurrency: int = 1,
+    resume: bool = True,
+    config_dir: Optional[str] = None,
+    overrides: Optional[str] = None,
+) -> dict[str, object]:
+    """Run LLM-as-a-Judge on existing generation outputs without regenerating."""
+    from medical_rag_reranker.commands.judge_generation import (
+        run_judge_generation_sample,
+    )
+
+    cfg = _load_cfg(config_dir=config_dir, overrides=overrides)
+    run_root = Path(str(cfg.run.experiment_matrix.output_root)) / str(run_id)
+    source_dir = Path(input_dir) if input_dir else run_root / "generation"
+    target_dir = Path(output_dir) if output_dir else run_root / "llm_judge_sample"
+    result = run_judge_generation_sample(
+        cfg=cfg,
+        input_dir=source_dir,
+        output_dir=target_dir,
+        examples_limit=examples_limit,
+        pattern=pattern,
+        max_files=max_files,
+        concurrency=concurrency,
+        resume=resume,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
 
 
 def cmd_eval_reranked_retrieval(
