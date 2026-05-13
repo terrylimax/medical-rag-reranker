@@ -45,6 +45,7 @@ E2E_COLUMNS = (
     "generation_top_k",
     "generation_retrieve_top_k",
     "generation_run_name",
+    "generation_remote_concurrency",
     "judge_mode",
     "generator_model",
     "judge_model",
@@ -221,6 +222,43 @@ def _percentile(values: list[float], q: float) -> float | None:
         return ordered[low]
     weight = pos - low
     return ordered[low] * (1.0 - weight) + ordered[high] * weight
+
+
+def _positive_float(value: Any, *, default: float = 1.0) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    if parsed <= 0:
+        return float(default)
+    return float(parsed)
+
+
+def _generation_remote_concurrency(
+    status: dict[str, Any],
+    generation: dict[str, Any] | None = None,
+) -> float:
+    if "generation_remote_concurrency" in status:
+        return _positive_float(status.get("generation_remote_concurrency"))
+
+    override_value = _override_value(status, "generation.remote_concurrency")
+    if override_value:
+        return _positive_float(override_value)
+
+    if generation is not None and "generation_remote_concurrency" in generation:
+        return _positive_float(generation.get("generation_remote_concurrency"))
+
+    return 1.0
+
+
+def _normalize_generation_latency(
+    value: float | None,
+    *,
+    concurrency: float,
+) -> float | None:
+    if value is None:
+        return None
+    return float(value) / _positive_float(concurrency)
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -788,6 +826,14 @@ def _run_matrix_job(
         "started_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "status": "planned" if dry_run else "running",
     }
+    if job.stage == "generation":
+        overrides = _override_dict(job.overrides)
+        status["generation_remote_concurrency"] = _positive_float(
+            overrides.get(
+                "generation.remote_concurrency",
+                os.getenv("GENERATION_REMOTE_CONCURRENCY", "1"),
+            )
+        )
     _write_json(job.status_path, status)
     try:
         status["command"] = _run_command(
@@ -920,15 +966,24 @@ def _build_summary(
                 raw_rows, "generation_latency_ms"
             )
             e2e_p50, e2e_p95 = _summarize_latencies(raw_rows, "end_to_end_latency_ms")
+            generation_remote_concurrency = _generation_remote_concurrency(
+                status, summary
+            )
             row = _summary_row(
                 cfg=cfg,
                 method=method,
                 status=status,
                 retrieval=retrieval,
                 generation=summary,
-                generation_latency_p50=generation_p50,
-                e2e_latency_p50=e2e_p50,
-                e2e_latency_p95=e2e_p95,
+                generation_latency_p50=_normalize_generation_latency(
+                    generation_p50, concurrency=generation_remote_concurrency
+                ),
+                e2e_latency_p50=_normalize_generation_latency(
+                    e2e_p50, concurrency=generation_remote_concurrency
+                ),
+                e2e_latency_p95=_normalize_generation_latency(
+                    e2e_p95, concurrency=generation_remote_concurrency
+                ),
             )
             e2e_rows.append(row)
     else:
@@ -1017,6 +1072,9 @@ def _summary_row(
             status, "generation.retrieve_top_k"
         ),
         "generation_run_name": _override_value(status, "run.eval_generation.run_name"),
+        "generation_remote_concurrency": _generation_remote_concurrency(
+            status, generation
+        ),
         "judge_mode": _override_value(status, "run.eval_generation.judge_mode"),
         "generator_model": str(cfg.generation.llm_model_name),
         "judge_model": str(cfg.run.eval_generation.judge_model),

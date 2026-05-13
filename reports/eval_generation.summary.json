@@ -1,0 +1,10 @@
+{
+  "avg_completeness": 4.8,
+  "avg_faithfulness": 4.6,
+  "avg_relevance": 5.0,
+  "avg_safety": 5.0,
+  "pass_rate": 0.8,
+  "fail_rate": 0.2,
+  "num_examples": 5.0,
+  "reranker_enabled_rate": 0.0
+}

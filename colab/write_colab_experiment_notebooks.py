@@ -223,7 +223,9 @@ NOTEBOOK_01 = [
             )
 
 
-        def base_overrides(*, artifacts_dir: Path = ARTIFACT_ROOT) -> list[str]:
+        def base_overrides(*, artifacts_dir: Path | None = None) -> list[str]:
+            if artifacts_dir is None:
+                artifacts_dir = ARTIFACT_ROOT
             return [
                 "data.use_dvc=false",
                 "data.processed_dir=data/processed",

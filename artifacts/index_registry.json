@@ -119,6 +119,11 @@
       "path": "data/processed/splits.json",
       "size_bytes": 306821,
       "sha256": "ed1778c100503b8e7f428a2765ab45acaf9729a5b6f18b81a3626cfd4ac14c35"
+    },
+    {
+      "path": "artifacts/experiments/medquad_full_remote/models/reranker/best.ckpt",
+      "size_bytes": 1309324673,
+      "sha256": "bce1a9d6b52ae76fc804a11ec577eeb22235df6763af983850acfad4d5287828"
     }
   ]
 }

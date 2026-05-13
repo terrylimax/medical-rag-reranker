@@ -5,14 +5,18 @@ judge_backend: local_openai_compatible
 
 # Local vLLM/OpenAI-compatible judge backend. The RAG answer generator remains
 # `configs/generation/generation.yaml`; these settings are only for evaluation.
-judge_base_url: ${oc.env:LLM_JUDGE_BASE_URL,http://localhost:8000/v1}
+judge_base_url: ${oc.env:LLM_JUDGE_BASE_URL,${oc.env:VLLM_BASE_URL,http://localhost:8000/v1}}
 judge_model: ${oc.env:LLM_JUDGE_MODEL,mistralai/Mistral-Small-3.2-24B-Instruct-2506}
-judge_api_key: ${oc.env:LLM_JUDGE_API_KEY,EMPTY}
+judge_api_key: ${oc.env:LLM_JUDGE_API_KEY,${oc.env:VLLM_API_KEY,EMPTY}}
 judge_temperature: 0.0
 judge_timeout_seconds: ${oc.decode:${oc.env:LLM_JUDGE_TIMEOUT_SECONDS,60}}
-judge_max_tokens: 512
-judge_max_context_docs: 5
-judge_max_doc_chars: 1500
+judge_max_retries: ${oc.decode:${oc.env:LLM_JUDGE_MAX_RETRIES,2}}
+judge_retry_backoff_seconds: ${oc.decode:${oc.env:LLM_JUDGE_RETRY_BACKOFF_SECONDS,2.0}}
+judge_parse_max_retries: ${oc.decode:${oc.env:LLM_JUDGE_PARSE_MAX_RETRIES,1}}
+judge_single_user_message: ${oc.decode:${oc.env:LLM_JUDGE_SINGLE_USER_MESSAGE,true}}
+judge_max_tokens: ${oc.decode:${oc.env:LLM_JUDGE_MAX_TOKENS,192}}
+judge_max_context_docs: ${oc.decode:${oc.env:LLM_JUDGE_MAX_CONTEXT_DOCS,2}}
+judge_max_doc_chars: ${oc.decode:${oc.env:LLM_JUDGE_MAX_DOC_CHARS,500}}
 
 generation_report_path: reports/eval_generation_examples.md
 generation_results_jsonl_path: reports/eval_generation_raw.jsonl

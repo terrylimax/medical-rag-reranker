@@ -36,6 +36,9 @@ remote_base_url: ${oc.env:VLLM_BASE_URL,null}
 remote_api_key: ${oc.env:VLLM_API_KEY,null}
 remote_api_type: ${oc.env:VLLM_API_TYPE,chat}
 remote_timeout_seconds: ${oc.decode:${oc.env:VLLM_TIMEOUT_SECONDS,120}}
+remote_concurrency: ${oc.decode:${oc.env:GENERATION_REMOTE_CONCURRENCY,1}}
+remote_max_retries: ${oc.decode:${oc.env:GENERATION_REMOTE_MAX_RETRIES,2}}
+remote_retry_backoff_seconds: ${oc.decode:${oc.env:GENERATION_REMOTE_RETRY_BACKOFF_SECONDS,2.0}}
 
 # Batch reporting.
 report_path: reports/baseline_examples.md

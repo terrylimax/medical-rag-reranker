@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import http.client
 import json
 import re
+import socket
 import urllib.error
 import urllib.request
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
-from time import perf_counter
+from time import perf_counter, sleep
 from typing import Any
 
 import torch
@@ -19,6 +22,7 @@ from transformers import (
 )
 
 from medical_rag_reranker.retrieval.loading import load_retriever
+from medical_rag_reranker.utils.progress import progress
 
 CITATION_PATTERN = re.compile(r"\[([^\[\]]+)\]")
 
@@ -29,6 +33,21 @@ class RetrievedChunk:
     score: float
     text: str
     source: str | None = None
+
+
+@dataclass
+class PreparedGeneration:
+    question: str
+    prompt: str
+    prompt_truncated: bool
+    retrieved: list[RetrievedChunk]
+    query_id: str | None
+    reranker_enabled: bool
+    retrieval_latency_ms: float
+    rerank_latency_ms: float
+    pre_generation_latency_ms: float
+    retrieved_before_rerank: list[dict[str, Any]] | None = None
+    retrieval_scores_by_doc_id: dict[str, float] | None = None
 
 
 def _as_optional_str(value: Any) -> str | None:
@@ -103,26 +122,76 @@ def _truncate_text(text: str, max_chars: int = 240) -> str:
     return clean[: max_chars - 3] + "..."
 
 
-def _build_prompt(question: str, docs: list[RetrievedChunk]) -> str:
+def _prompt_char_limit(max_input_tokens: int | None) -> int | None:
+    if max_input_tokens is None:
+        return None
+    if int(max_input_tokens) <= 0:
+        return None
+    # Remote OpenAI-compatible backends may not expose a tokenizer locally.
+    # A conservative character budget prevents vLLM context-length failures.
+    return int(max_input_tokens) * 3
+
+
+def _format_context(
+    docs: list[RetrievedChunk], *, max_chars: int | None = None
+) -> tuple[str, bool]:
     if docs:
         context_lines = []
         for d in docs:
-            context_lines.append(f"[{d.doc_id}] {d.text}")
+            context_lines.append(f"[{d.doc_id}] {' '.join(str(d.text).split())}")
         context = "\n\n".join(context_lines)
     else:
         context = "(no retrieved documents)"
+    if max_chars is None or len(context) <= max_chars:
+        return context, False
 
-    return (
+    truncated_lines: list[str] = []
+    remaining = max(0, int(max_chars))
+    for d in docs:
+        prefix = f"[{d.doc_id}] "
+        separator_len = 2 if truncated_lines else 0
+        available = remaining - separator_len - len(prefix)
+        if available <= 0:
+            break
+
+        text = " ".join(str(d.text).split())
+        if len(text) > available:
+            truncated_lines.append(prefix + text[: max(0, available - 3)] + "...")
+            remaining = 0
+            break
+
+        truncated_lines.append(prefix + text)
+        remaining -= separator_len + len(prefix) + len(text)
+
+    if truncated_lines:
+        return "\n\n".join(truncated_lines), True
+    return "(retrieved context omitted because it exceeded the prompt budget)", True
+
+
+def _build_prompt(
+    question: str,
+    docs: list[RetrievedChunk],
+    *,
+    max_input_tokens: int | None = None,
+) -> tuple[str, bool]:
+    header = (
         "You are a medical QA assistant.\n"
         "Rules:\n"
         "1) Answer strictly using only the provided context.\n"
         "2) If context is insufficient, say so explicitly.\n"
         "3) Cite supporting sources using [doc_id] format.\n"
         "4) Do not invent citations.\n\n"
-        f"Context:\n{context}\n\n"
-        f"Question:\n{question}\n\n"
-        "Answer:"
+        "Context:\n"
     )
+    footer = f"\n\nQuestion:\n{question}\n\nAnswer:"
+
+    max_prompt_chars = _prompt_char_limit(max_input_tokens)
+    max_context_chars = None
+    if max_prompt_chars is not None:
+        max_context_chars = max(0, max_prompt_chars - len(header) - len(footer))
+
+    context, truncated = _format_context(docs, max_chars=max_context_chars)
+    return header + context + footer, truncated
 
 
 class LocalGenerator:
@@ -225,6 +294,8 @@ class RemoteOpenAICompatibleGenerator:
         api_key: str | None = None,
         api_type: str = "chat",
         timeout_seconds: float = 120.0,
+        max_retries: int = 2,
+        retry_backoff_seconds: float = 2.0,
     ) -> None:
         cleaned_base_url = str(base_url or "").strip().rstrip("/")
         if not cleaned_base_url:
@@ -241,29 +312,63 @@ class RemoteOpenAICompatibleGenerator:
         self.api_key = _as_optional_str(api_key)
         self.api_type = str(api_type or "chat").strip().lower()
         self.timeout_seconds = float(timeout_seconds)
+        self.max_retries = max(0, int(max_retries))
+        self.retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
+
+    def _sleep_before_retry(self, attempt: int, exc: BaseException) -> None:
+        if self.retry_backoff_seconds <= 0:
+            return
+        delay = self.retry_backoff_seconds * (2**attempt)
+        print(
+            "Remote generation request failed transiently; "
+            f"retrying in {delay:.1f}s ({type(exc).__name__}: {exc})"
+        )
+        sleep(delay)
 
     def _request(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        request = urllib.request.Request(
-            f"{self.base_url}{endpoint}",
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(
-                request, timeout=float(self.timeout_seconds)
-            ) as response:
-                body = response.read()
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(
-                f"Remote generation request failed: {exc.code}. {body}"
-            ) from exc
-        return json.loads(body.decode("utf-8"))
+        data = json.dumps(payload).encode("utf-8")
+        retryable_statuses = {429, 500, 502, 503, 504}
+        for attempt in range(self.max_retries + 1):
+            request = urllib.request.Request(
+                f"{self.base_url}{endpoint}",
+                data=data,
+                headers=headers,
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(
+                    request, timeout=float(self.timeout_seconds)
+                ) as response:
+                    body = response.read()
+                return json.loads(body.decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")
+                if exc.code in retryable_statuses and attempt < self.max_retries:
+                    self._sleep_before_retry(attempt, exc)
+                    continue
+                raise RuntimeError(
+                    f"Remote generation request failed: {exc.code}. {body}"
+                ) from exc
+            except (
+                TimeoutError,
+                socket.timeout,
+                urllib.error.URLError,
+                http.client.RemoteDisconnected,
+                http.client.IncompleteRead,
+            ) as exc:
+                if attempt < self.max_retries:
+                    self._sleep_before_retry(attempt, exc)
+                    continue
+                raise RuntimeError(
+                    "Remote generation request failed after "
+                    f"{attempt + 1} attempts: {type(exc).__name__}: {exc}"
+                ) from exc
+
+        raise RuntimeError("Remote generation request failed unexpectedly.")
 
     def generate(self, prompt: str) -> str:
         temperature = self.temperature if self.do_sample else 0.0
@@ -324,6 +429,10 @@ def _build_generator_from_cfg(cfg: DictConfig):
             api_type=str(getattr(cfg.generation, "remote_api_type", "chat")),
             timeout_seconds=float(
                 getattr(cfg.generation, "remote_timeout_seconds", 120.0)
+            ),
+            max_retries=int(getattr(cfg.generation, "remote_max_retries", 2)),
+            retry_backoff_seconds=float(
+                getattr(cfg.generation, "remote_retry_backoff_seconds", 2.0)
             ),
         )
 
@@ -405,8 +514,7 @@ def _serialize_doc(
     return row
 
 
-def _run_one_question(
-    llm,
+def _prepare_one_question(
     retriever,
     docstore: dict[str, dict[str, Any]],
     question: str,
@@ -414,8 +522,9 @@ def _run_one_question(
     retrieve_top_k: int,
     reranker=None,
     query_id: str | None = None,
-) -> dict[str, Any]:
-    """Run retrieval, optional reranking, and generation for one question."""
+    max_input_tokens: int | None = None,
+) -> PreparedGeneration:
+    """Run retrieval and optional reranking, then build a generation prompt."""
     total_start = perf_counter()
     retrieval_start = perf_counter()
     retrieved_candidates = _retrieve_docs(
@@ -465,18 +574,47 @@ def _run_one_question(
             for d in reranked_docs
         ]
 
-    prompt = _build_prompt(question=question, docs=retrieved)
+    prompt, prompt_truncated = _build_prompt(
+        question=question,
+        docs=retrieved,
+        max_input_tokens=max_input_tokens,
+    )
+    retrieval_scores_by_doc_id = None
+    if retrieved_before_rerank is not None:
+        retrieval_scores_by_doc_id = {
+            str(doc["doc_id"]): float(doc["retrieval_score"])
+            for doc in retrieved_before_rerank
+        }
+
+    prepared = PreparedGeneration(
+        question=question,
+        prompt=prompt,
+        prompt_truncated=prompt_truncated,
+        retrieved=retrieved,
+        query_id=query_id,
+        reranker_enabled=reranker is not None,
+        retrieval_latency_ms=float(retrieval_latency_ms),
+        rerank_latency_ms=float(rerank_latency_ms),
+        pre_generation_latency_ms=float((perf_counter() - total_start) * 1000.0),
+        retrieved_before_rerank=retrieved_before_rerank,
+        retrieval_scores_by_doc_id=retrieval_scores_by_doc_id,
+    )
+    return prepared
+
+
+def _complete_prepared_question(llm, prepared: PreparedGeneration) -> dict[str, Any]:
+    """Send one prepared prompt to the LLM and serialize a generation result."""
     generation_start = perf_counter()
-    answer = llm.generate(prompt)
+    answer = llm.generate(prepared.prompt)
     generation_latency_ms = (perf_counter() - generation_start) * 1000.0
     citations_detected = _detect_citations(answer)
     supported_citations, unsupported_citations = _partition_citations(
         citations=citations_detected,
-        retrieved_doc_ids=[doc.doc_id for doc in retrieved],
+        retrieved_doc_ids=[doc.doc_id for doc in prepared.retrieved],
     )
 
     out: dict[str, Any] = {
-        "question": question,
+        "question": prepared.question,
         "retrieved": [
             _serialize_doc(
                 doc_id=d.doc_id,
@@ -484,23 +622,23 @@ def _run_one_question(
                 text=d.text,
                 source=d.source,
             )
-            for d in retrieved
+            for d in prepared.retrieved
         ],
         "answer": answer,
+        "prompt_truncated": prepared.prompt_truncated,
         "citations_detected": citations_detected,
         "supported_citations_detected": supported_citations,
         "unsupported_citations_detected": unsupported_citations,
-        "reranker_enabled": reranker is not None,
-        "retrieval_latency_ms": float(retrieval_latency_ms),
+        "reranker_enabled": prepared.reranker_enabled,
+        "retrieval_latency_ms": float(prepared.retrieval_latency_ms),
         "generation_latency_ms": float(generation_latency_ms),
-        "end_to_end_latency_ms": float((perf_counter() - total_start) * 1000.0),
+        "end_to_end_latency_ms": float(
+            prepared.pre_generation_latency_ms + generation_latency_ms
+        ),
     }
-    if retrieved_before_rerank is not None:
-        retrieval_scores_by_doc_id = {
-            str(doc["doc_id"]): float(doc["retrieval_score"])
-            for doc in retrieved_before_rerank
-        }
-        out["retrieved_before_rerank"] = retrieved_before_rerank
+    if prepared.retrieved_before_rerank is not None:
+        retrieval_scores_by_doc_id = prepared.retrieval_scores_by_doc_id or {}
+        out["retrieved_before_rerank"] = prepared.retrieved_before_rerank
         out["retrieved"] = [
             _serialize_doc(
                 doc_id=d.doc_id,
@@ -510,13 +648,38 @@ def _run_one_question(
                 text=d.text,
                 source=d.source,
             )
-            for d in retrieved
+            for d in prepared.retrieved
         ]
-        out["rerank_latency_ms"] = float(rerank_latency_ms)
+        out["rerank_latency_ms"] = float(prepared.rerank_latency_ms)
 
-    if query_id is not None:
-        out["query_id"] = query_id
+    if prepared.query_id is not None:
+        out["query_id"] = prepared.query_id
     return out
+
+
+def _run_one_question(
+    llm,
+    retriever,
+    docstore: dict[str, dict[str, Any]],
+    question: str,
+    top_k: int,
+    retrieve_top_k: int,
+    reranker=None,
+    query_id: str | None = None,
+    max_input_tokens: int | None = None,
+) -> dict[str, Any]:
+    """Run retrieval, optional reranking, and generation for one question."""
+    prepared = _prepare_one_question(
+        retriever=retriever,
+        docstore=docstore,
+        question=question,
+        top_k=top_k,
+        retrieve_top_k=retrieve_top_k,
+        reranker=reranker,
+        query_id=query_id,
+        max_input_tokens=max_input_tokens,
+    )
+    return _complete_prepared_question(llm, prepared)
 
 
 def _write_examples_report(
@@ -604,6 +767,36 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def _reset_jsonl(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+
+
+def _append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def _load_existing_results(path: Path) -> dict[str, dict[str, Any]]:
+    if not path.exists():
+        return {}
+
+    rows: dict[str, dict[str, Any]] = {}
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            query_id = row.get("query_id")
+            if query_id is not None:
+                rows[str(query_id)] = row
+    return rows
+
+
 def write_examples_report(
     report_path: Path,
     results: list[dict[str, Any]],
@@ -639,6 +832,159 @@ def _load_queries(path: Path, limit: int | None = None) -> list[dict[str, Any]]:
             if limit is not None and len(rows) >= limit:
                 break
     return rows
+
+
+def _run_batch_questions(
+    *,
+    llm,
+    retriever,
+    docstore: dict[str, dict[str, Any]],
+    queries_rows: list[dict[str, Any]],
+    top_k: int,
+    retrieve_top_k: int,
+    reranker,
+    max_input_tokens: int,
+    remote_concurrency: int,
+    incremental_results_path: Path | None,
+) -> list[dict[str, Any]]:
+    existing_results: dict[str, dict[str, Any]] = {}
+    if incremental_results_path is not None:
+        existing_results = _load_existing_results(incremental_results_path)
+        if existing_results:
+            print(
+                "Resuming generation from partial raw results: "
+                f"{len(existing_results)} completed query rows"
+            )
+        else:
+            _reset_jsonl(incremental_results_path)
+
+    concurrency = max(1, int(remote_concurrency))
+    use_parallel_remote = concurrency > 1 and isinstance(
+        llm, RemoteOpenAICompatibleGenerator
+    )
+    results: list[dict[str, Any] | None] = [None] * len(queries_rows)
+
+    if use_parallel_remote:
+        pending_count = 0
+        for idx, row in enumerate(queries_rows, start=1):
+            query_id = _resolve_query_id(row, fallback_idx=idx)
+            existing = existing_results.get(query_id)
+            if existing is not None:
+                results[idx - 1] = existing
+            else:
+                pending_count += 1
+        if pending_count <= 0:
+            return [row for row in results if row is not None]
+
+        print(
+            "Preparing prompts and streaming remote generation "
+            f"with concurrency={concurrency}"
+        )
+        completed_remote = 0
+        future_to_idx: dict[Future, int] = {}
+
+        def collect_completed(done_futures: set[Future]) -> None:
+            nonlocal completed_remote
+            for future in done_futures:
+                idx = future_to_idx.pop(future)
+                result = future.result()
+                results[idx] = result
+                completed_remote += 1
+                if incremental_results_path is not None:
+                    _append_jsonl(incremental_results_path, result)
+
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            try:
+                for idx, row in progress(
+                    enumerate(queries_rows, start=1),
+                    desc="Preparing/submitting generation prompts",
+                    total=len(queries_rows),
+                    unit="query",
+                ):
+                    result_idx = idx - 1
+                    query_id = _resolve_query_id(row, fallback_idx=idx)
+                    existing = existing_results.get(query_id)
+                    if existing is not None:
+                        results[result_idx] = existing
+                        continue
+
+                    prepared = _prepare_one_question(
+                        retriever=retriever,
+                        docstore=docstore,
+                        question=_resolve_query_text(row),
+                        top_k=top_k,
+                        retrieve_top_k=retrieve_top_k,
+                        reranker=reranker,
+                        query_id=query_id,
+                        max_input_tokens=max_input_tokens,
+                    )
+                    future_to_idx[
+                        executor.submit(_complete_prepared_question, llm, prepared)
+                    ] = result_idx
+                    if len(future_to_idx) >= concurrency * 2:
+                        done, _pending = wait(
+                            future_to_idx, return_when=FIRST_COMPLETED
+                        )
+                        collect_completed(done)
+
+                if completed_remote:
+                    print(
+                        "Remote generation completed during preparation: "
+                        f"{completed_remote}/{pending_count}"
+                    )
+                while future_to_idx:
+                    done, _pending = wait(future_to_idx, return_when=FIRST_COMPLETED)
+                    collect_completed(done)
+            except Exception:
+                for future in future_to_idx:
+                    future.cancel()
+                raise
+    else:
+        prepared_rows: list[tuple[int, PreparedGeneration]] = []
+        for idx, row in progress(
+            enumerate(queries_rows, start=1),
+            desc="Preparing generation prompts",
+            total=len(queries_rows),
+            unit="query",
+        ):
+            result_idx = idx - 1
+            query_id = _resolve_query_id(row, fallback_idx=idx)
+            existing = existing_results.get(query_id)
+            if existing is not None:
+                results[result_idx] = existing
+                continue
+
+            prepared_rows.append(
+                (
+                    result_idx,
+                    _prepare_one_question(
+                        retriever=retriever,
+                        docstore=docstore,
+                        question=_resolve_query_text(row),
+                        top_k=top_k,
+                        retrieve_top_k=retrieve_top_k,
+                        reranker=reranker,
+                        query_id=query_id,
+                        max_input_tokens=max_input_tokens,
+                    ),
+                )
+            )
+
+        if not prepared_rows:
+            return [row for row in results if row is not None]
+
+        for idx, prepared in progress(
+            prepared_rows,
+            desc="Generating answers",
+            total=len(prepared_rows),
+            unit="query",
+        ):
+            result = _complete_prepared_question(llm, prepared)
+            results[idx] = result
+            if incremental_results_path is not None:
+                _append_jsonl(incremental_results_path, result)
+
+    return [row for row in results if row is not None]
 
 
 def generate_from_cfg(
@@ -700,6 +1046,7 @@ def generate_from_cfg(
             retrieve_top_k=retrieve_top_k,
             reranker=reranker,
             query_id=None,
+            max_input_tokens=int(getattr(cfg.generation, "max_input_tokens", 1024)),
         )
 
     mode = str(getattr(cfg.generation, "mode", "single")).lower()
@@ -718,22 +1065,21 @@ def generate_from_cfg(
         limit=None if examples_limit <= 0 else examples_limit,
     )
 
-    results: list[dict[str, Any]] = []
-    for idx, row in enumerate(queries_rows, start=1):
-        qid = _resolve_query_id(row, fallback_idx=idx)
-        qtext = _resolve_query_text(row)
-        results.append(
-            _run_one_question(
-                llm=llm,
-                retriever=retriever,
-                docstore=docstore,
-                question=qtext,
-                top_k=int(cfg.generation.top_k),
-                retrieve_top_k=retrieve_top_k,
-                reranker=reranker,
-                query_id=qid,
-            )
-        )
+    results_jsonl = _as_optional_str(
+        getattr(cfg.generation, "results_jsonl_path", None)
+    )
+    results = _run_batch_questions(
+        llm=llm,
+        retriever=retriever,
+        docstore=docstore,
+        queries_rows=queries_rows,
+        top_k=int(cfg.generation.top_k),
+        retrieve_top_k=retrieve_top_k,
+        reranker=reranker,
+        max_input_tokens=int(getattr(cfg.generation, "max_input_tokens", 1024)),
+        remote_concurrency=int(getattr(cfg.generation, "remote_concurrency", 1)),
+        incremental_results_path=Path(results_jsonl) if results_jsonl else None,
+    )
 
     report_file = Path(_as_optional_str(output_path) or str(cfg.generation.report_path))
     write_examples_report(
@@ -744,9 +1090,6 @@ def generate_from_cfg(
         top_k=int(cfg.generation.top_k),
     )
 
-    results_jsonl = _as_optional_str(
-        getattr(cfg.generation, "results_jsonl_path", None)
-    )
     if results_jsonl:
         write_results_jsonl(Path(results_jsonl), results)
 

@@ -4,6 +4,9 @@ index_file: graph_bm25/graph_index.json
 base_retriever: bm25
 graph_path: ${run.prep_data.out_dir}/medquad_graph.json
 
+vector_backend: ${oc.env:RETRIEVAL_VECTOR_BACKEND,local}
+fusion: score
+rrf_k: 60
 seed_k: 20
 expand_k: 50
 max_hops: 2
