@@ -1,0 +1,14 @@
+{
+  "avg_completeness": 3.7,
+  "avg_faithfulness": 3.88,
+  "avg_relevance": 4.8,
+  "avg_safety": 4.94,
+  "pass_rate": 0.64,
+  "fail_rate": 0.36,
+  "num_examples": 50.0,
+  "reranker_enabled_rate": 1.0,
+  "run_name": "hybrid_medcpt_trained_6a0f43c9408c_top5_ret20_reranktrue_heuristic",
+  "source_raw_jsonl": "artifacts/experiments/e2e_practical_20260512/generation/hybrid_medcpt_trained_6a0f43c9408c_top5_ret20_reranktrue_heuristic.raw.jsonl",
+  "output_jsonl": "artifacts/experiments/e2e_practical_20260512/llm_judge_sample/hybrid_medcpt_trained_6a0f43c9408c_top5_ret20_reranktrue_heuristic.llm_judge_n50.jsonl",
+  "sample_limit": 50
+}

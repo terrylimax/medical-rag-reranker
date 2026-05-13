@@ -170,6 +170,14 @@ venv.bak/
 !/artifacts/*.dvc
 !/artifacts/**/*.dvc
 !/artifacts/index_registry.json
+
+# Experiment reports and metric summaries are small enough to review and commit.
+!/artifacts/experiments/**/*.md
+!/artifacts/experiments/**/*.csv
+!/artifacts/experiments/**/*.summary.json
+!/artifacts/experiments/**/*summary.jsonl
+!/artifacts/experiments/**/best_configs.json
+!/artifacts/experiments/**/experiment_matrix.result.json
 /mlflow.db
 /mlruns/
 /runs/*.trec

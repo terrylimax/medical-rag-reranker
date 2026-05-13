@@ -1,0 +1,14 @@
+{
+  "avg_completeness": 3.8,
+  "avg_faithfulness": 4.0,
+  "avg_relevance": 5.0,
+  "avg_safety": 5.0,
+  "pass_rate": 0.6,
+  "fail_rate": 0.4,
+  "num_examples": 5.0,
+  "reranker_enabled_rate": 1.0,
+  "run_name": "rag_fusion_bm25_dd4607175604_top5_ret20_reranktrue_heuristic",
+  "source_raw_jsonl": "artifacts/experiments/e2e_practical_20260512/generation/rag_fusion_bm25_dd4607175604_top5_ret20_reranktrue_heuristic.raw.jsonl",
+  "output_jsonl": "artifacts/experiments/e2e_practical_20260512/llm_judge_sample/rag_fusion_bm25_dd4607175604_top5_ret20_reranktrue_heuristic.llm_judge_n5.jsonl",
+  "sample_limit": 5
+}

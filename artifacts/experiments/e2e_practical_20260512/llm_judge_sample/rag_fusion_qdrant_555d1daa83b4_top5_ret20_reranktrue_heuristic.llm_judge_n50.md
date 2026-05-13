@@ -1,0 +1,1326 @@
+# LLM-as-a-Judge Sample: rag_fusion_qdrant_555d1daa83b4_top5_ret20_reranktrue_heuristic
+
+- examples: 50
+- pass_rate: 0.76
+- avg_faithfulness: 4.16
+- avg_relevance: 4.74
+- avg_completeness: 4.08
+- avg_safety: 4.96
+
+## Example 1
+
+**Query ID:** `0006510-1`
+
+**Question**
+
+What are the symptoms of X-linked lymphoproliferative syndrome 1 ?
+
+**Answer**
+
+The provided context does not contain information about the symptoms of X-linked lymphoproliferative syndrome 1. Therefore, based on the given documents, it is not possible to answer the question. [no context]
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer correctly notes lack of relevant context.",
+  "raw_judge_response": "```json\n{\"faithfulness\":5,\"relevance\":5,\"completeness\":5,\"safety\":5,\"verdict\":\"pass\",\"rationale\":\"Answer correctly notes lack of relevant context.\"}\n```"
+}
+````
+
+## Example 2
+
+**Query ID:** `0000312-4`
+
+**Question**
+
+Is early-onset primary dystonia inherited ?
+
+**Answer**
+
+The provided context does not specify whether early-onset primary dystonia is inherited. While several documents mention an autosomal dominant inheritance pattern for certain conditions, none explicitly state that early-onset primary dystonia follows this pattern or confirm its inheritance status. Therefore, based on the given information, it cannot be determined whether early-onset primary dystonia is inherited.
+
+[medquad_ans_0000095-4] [medquad_ans_0000585-4] [medquad_ans_0000362-4] [medquad_ans_0000673-4] [medquad_ans_0000575-4]
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer accurately reflects the lack of context on early-onset primary dystonia inheritance.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 5, \"relevance\": 5, \"completeness\": 5, \"safety\": 5, \"verdict\": \"pass\", \"rationale\": \"Answer accurately reflects the lack of context on early-onset primary dystonia inheritance.\"}\n```"
+}
+````
+
+## Example 3
+
+**Query ID:** `0000397-2__dup1`
+
+**Question**
+
+Who is at risk for Parasites - Taeniasis? ?
+
+**Answer**
+
+People at risk for taeniasis include those who eat raw or undercooked beef or pork. Infections with Taenia saginata occur where contaminated raw beef is consumed, particularly in Eastern Europe, Russia, eastern Africa, and Latin America. Taenia solium infections are more common in underdeveloped communities with poor sanitation and where raw or undercooked pork is consumed, with higher rates seen in Latin America, Eastern Europe, sub-Saharan Africa, India, and Asia. Taenia solium taeniasis is also seen in the United States, typically among Latin American immigrants. Taenia asiatica is limited to Asia and is found in countries such as the Republic of Korea, China, Taiwan, Indonesia, and Thailand. Persons who do not eat raw or undercooked beef or pork are not likely to get taeniasis [medquad_ans_0000397-2__dup1].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully supports context with no unsupported claims.",
+  "raw_judge_response": "{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 5,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Answer fully supports context with no unsupported claims.\"\n}"
+}
+```
+
+## Example 4
+
+**Query ID:** `0000194-2__dup1`
+
+**Question**
+
+What are the symptoms of Aicardi-Goutieres syndrome type 2 ?
+
+**Answer**
+
+The symptoms of Aicardi-Goutieres syndrome type 2 include dystonia (5%), microcephaly (5%), spastic paraplegia (5%), basal ganglia calcification, cerebral atrophy, chronic CSF lymphocytosis, and encephalopathy [medquad_ans_0000194-2__dup1]. These frequencies are approximate percentages based on the Human Phenotype Ontology, which compiles data from sources such as Orphanet [medquad_ans_0000194-2__dup1].
+
+**Judge**
+
+````json
+{
+  "faithfulness": 3.0,
+  "relevance": 5.0,
+  "completeness": 3.0,
+  "safety": 5.0,
+  "verdict": "fail",
+  "rationale": "Unsupported claims like spastic paraplegia and encephalopathy.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 3,\n  \"relevance\": 5,\n  \"completeness\": 3,\n  \"safety\": 5,\n  \"verdict\": \"fail\",\n  \"rationale\": \"Unsupported claims like spastic paraplegia and encephalopathy.\"\n}\n```"
+}
+````
+
+## Example 5
+
+**Query ID:** `0003421-1`
+
+**Question**
+
+What are the symptoms of Kowarski syndrome ?
+
+**Answer**
+
+The signs and symptoms of Kowarski syndrome include abnormality of metabolism/homeostasis, autosomal recessive inheritance, delayed skeletal maturation, and pituitary dwarfism [medquad_ans_0003421-1].
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches the retrieved context for Kowarski syndrome symptoms.",
+  "raw_judge_response": "```json\n{\"faithfulness\":5,\"relevance\":5,\"completeness\":5,\"safety\":5,\"verdict\":\"pass\",\"rationale\":\"Answer fully matches the retrieved context for Kowarski syndrome symptoms.\"}\n```"
+}
+````
+
+## Example 6
+
+**Query ID:** `0000450-4`
+
+**Question**
+
+Is hemophilia inherited ?
+
+**Answer**
+
+The provided context does not mention hemophilia or specify how it is inherited. Therefore, based on the given information, it is not possible to determine if hemophilia is inherited. [No supporting source]
+
+**Judge**
+
+````json
+{
+  "faithfulness": 1.0,
+  "relevance": 1.0,
+  "completeness": 1.0,
+  "safety": 5.0,
+  "verdict": "fail",
+  "rationale": "Answer ignores context and fails to address the question.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 1, \"relevance\": 1, \"completeness\": 1, \"safety\": 5, \"verdict\": \"fail\", \"rationale\": \"Answer ignores context and fails to address the question.\"}\n```"
+}
+````
+
+## Example 7
+
+**Query ID:** `0003284-1`
+
+**Question**
+
+What are the symptoms of IVIC syndrome ?
+
+**Answer**
+
+The symptoms of IVIC syndrome include hearing impairment (90%), limitation of joint mobility (90%), short stature (90%), strabismus (90%), abnormal dermatoglyphics (50%), aplasia/hypoplasia of the thumb (50%), radioulnar synostosis (50%), scoliosis (50%), synostosis of carpal bones (50%), triphalangeal thumb (50%), abnormality of the clavicle (7.5%), arrhythmia (7.5%), leukocytosis (7.5%), preaxial hand polydactyly (7.5%), thrombocytopenia (7.5%), and urogenital fistula (7.5%) [medquad_ans_0003284-1].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches the retrieved context.",
+  "raw_judge_response": "{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 5,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Answer fully matches the retrieved context.\"\n}"
+}
+```
+
+## Example 8
+
+**Query ID:** `0000775-1`
+
+**Question**
+
+What is (are) paroxysmal nocturnal hemoglobinuria ?
+
+**Answer**
+
+Paroxysmal nocturnal hemoglobinuria (PNH) is an acquired disorder that leads to the premature death and impaired production of blood cells. It affects red blood cells (erythrocytes), which carry oxygen; white blood cells (leukocytes), which protect the body from infection; and platelets (thrombocytes), which are involved in blood clotting. PNH can occur at any age but is usually diagnosed in young adulthood and affects both sexes equally. The disorder is caused by acquired, rather than inherited, mutations in the PIGA gene and is not passed down to children of affected individuals. People with PNH experience sudden, recurring episodes of symptoms (paroxysmal symptoms) that may be triggered by stresses on the body, such as infections or physical exertion. During these episodes, red blood cells are prematurely destroyed (hemolysis), leading to hemolytic anemia and signs and symptoms such as fatigue,
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches and is supported by the retrieved context.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 5,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Answer fully matches and is supported by the retrieved context.\"\n}\n```"
+}
+````
+
+## Example 9
+
+**Query ID:** `0000010-10`
+
+**Question**
+
+What is (are) Colorectal Cancer ?
+
+**Answer**
+
+Colorectal cancer is a disease in which malignant (cancer) cells form in the tissues of the colon or rectum, which are part of the large intestine. It occurs when tumors form in the lining of the large intestine, also known as the large bowel [medquad_ans_0000010-10]. The condition is common in both men and women and the risk increases after age 50 [medquad_ans_0000221-1__dup2]. Factors that increase the risk include a family history of colorectal cancer, having colorectal polyps, ulcerative colitis or Crohn's disease, eating a diet high in fat, or smoking [medquad_ans_0000221-1__dup2]. Symptoms may include diarrhea or constipation, a feeling that the bowel does not empty completely, blood in the stool, narrow stools, gas pains or cr
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches and cites all relevant context.",
+  "raw_judge_response": "{\"faithfulness\": 5, \"relevance\": 5, \"completeness\": 5, \"safety\": 5, \"verdict\": \"pass\", \"rationale\": \"Answer fully matches and cites all relevant context.\"}"
+}
+```
+
+## Example 10
+
+**Query ID:** `0000544-1`
+
+**Question**
+
+What is (are) junctional epidermolysis bullosa ?
+
+**Answer**
+
+Junctional epidermolysis bullosa (JEB) is a type of Epidermolysis Bullosa, a group of genetic conditions that cause the skin to be very fragile and to blister easily. JEB is separated into two categories: the Herlitz type and the Non-Herlitz type. The Herlitz type is very severe, and individuals with this condition often do not survive infancy. The Non-Herlitz type includes several subtypes that cause mild to severe blistering of the skin present at birth or shortly thereafter. JEB is inherited in an autosomal recessive pattern and is caused by mutations in the LAMB3, COL17A1, or LAMC2, and LAMA3 genes. There is no cure for JEB; treatment is focused on management of blistering and prevention of secondary infections [medquad_ans_0003317-1]. Both types
+
+**Judge**
+
+````json
+{
+  "faithfulness": 4.0,
+  "relevance": 5.0,
+  "completeness": 4.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Most claims are supported, but gene mutations are unsupported.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 4,\n  \"relevance\": 5,\n  \"completeness\": 4,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Most claims are supported, but gene mutations are unsupported.\"\n}\n```"
+}
+````
+
+## Example 11
+
+**Query ID:** `0000668-3`
+
+**Question**
+
+What are the genetic changes related to molybdenum cofactor deficiency ?
+
+**Answer**
+
+The genetic changes related to molybdenum cofactor deficiency are mutations in the MOCS1, MOCS2, or GPHN gene. Mutations in the MOCS1 gene cause type A, mutations in the MOCS2 gene cause type B, and mutations in the GPHN gene cause type C [medquad_ans_0000668-3]. These mutations reduce or eliminate the function of the associated protein, impairing molybdenum cofactor biosynthesis [medquad_ans_0000668-3].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches the retrieved context on genetic causes.",
+  "raw_judge_response": "{\"faithfulness\":5,\"relevance\":5,\"completeness\":5,\"safety\":5,\"verdict\":\"pass\",\"rationale\":\"Answer fully matches the retrieved context on genetic causes.\"}"
+}
+```
+
+## Example 12
+
+**Query ID:** `0000756-1`
+
+**Question**
+
+What is (are) ornithine translocase deficiency ?
+
+**Answer**
+
+Ornithine translocase deficiency is an inherited disorder that causes ammonia to accumulate in the blood. Ammonia, which is formed when proteins are broken down in the body, is toxic if the levels become too high. The nervous system is especially sensitive to the effects of excess ammonia. Ornithine translocase deficiency varies widely in its severity and age of onset. An infant with ornithine translocase deficiency may be lacking in energy (lethargic) or refuse to eat, or have poorly controlled breathing or body temperature. Some babies with this disorder may experience seizures or unusual body movements, or go into a coma. Episodes of illness may coincide with the introduction of high-protein formulas or solid foods into the diet. In most affected individuals, signs and symptoms of ornithine translocase deficiency do not appear until later in life. Later-onset forms of ornithine translocase deficiency are usually less severe than the
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches the retrieved context on ornithine translocase deficiency.",
+  "raw_judge_response": "```json\n{\"faithfulness\":5,\"relevance\":5,\"completeness\":5,\"safety\":5,\"verdict\":\"pass\",\"rationale\":\"Answer fully matches the retrieved context on ornithine translocase deficiency.\"}\n```"
+}
+````
+
+## Example 13
+
+**Query ID:** `0000362-1__dup2`
+
+**Question**
+
+Do you have information about Financial Assistance
+
+**Answer**
+
+Yes, there is information about financial assistance. Certain government programs and nonprofit organizations can help with medical costs, especially if you don't have insurance or need help with costs that aren't covered. You can also discuss concerns about paying medical bills with your health care provider, social worker, or the business office of your clinic or hospital [medquad_ans_0000362-1__dup2]. Additionally, Medicaid is a government health insurance program that helps low-income people pay their medical bills, and each state may have specific rules regarding cost-sharing and eligibility requirements [medquad_ans_0000586-1__dup2].
+
+**Judge**
+
+````json
+{
+  "faithfulness": 4.0,
+  "relevance": 5.0,
+  "completeness": 3.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Most claims are supported, but some details lack context.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 4,\n  \"relevance\": 5,\n  \"completeness\": 3,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Most claims are supported, but some details lack context.\"\n}\n```"
+}
+````
+
+## Example 14
+
+**Query ID:** `0004105-1`
+
+**Question**
+
+What is (are) Mollaret meningitis ?
+
+**Answer**
+
+Mollaret meningitis is a rare type of meningitis characterized by repeated episodes of fever, stiff neck (meningismus), muscle aches, and severe headaches, separated by weeks or months of no symptoms. About half of affected individuals may also experience long-term abnormalities of the nervous system that come and go, such as seizures, double vision, abnormal reflexes, paralysis of a cranial nerve (paresis), hallucinations, or coma. The exact cause remains unknown, although recent data suggests that herpes simplex virus (HSV-2 and, less frequently, HSV-1) may cause some, if not most cases. Other potential causes include trauma and viral infections other than herpes simplex [medquad_ans_0004105-1].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches and cites the retrieved context accurately.",
+  "raw_judge_response": "{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 5,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Answer fully matches and cites the retrieved context accurately.\"\n}"
+}
+```
+
+## Example 15
+
+**Query ID:** `0003319-3`
+
+**Question**
+
+What causes Juvenile amyotrophic lateral sclerosis ?
+
+**Answer**
+
+The provided context does not contain information about the causes of Juvenile amyotrophic lateral sclerosis. While it discusses juvenile primary lateral sclerosis and amyotrophic lateral sclerosis (ALS), it does not specify the causes of juvenile ALS. Therefore, based on the available context, the cause of Juvenile amyotrophic lateral sclerosis cannot be determined.
+
+[medquad_ans_0000309-3__dup1] mentions that in approximately 90-95% of ALS cases, the cause is unknown (sporadic), and in 5-10% of cases, it is genetic, with mutations in genes such as C9orf72, SOD1, TARDBP, FUS, ANG, ALS2, SETX, and VAPB. However, this information pertains to ALS in general, not specifically to juvenile ALS. There is no explicit information linking genetic mutations or other factors specifically to juvenile
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer accurately reflects the lack of context on juvenile ALS causes.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 5, \"relevance\": 5, \"completeness\": 5, \"safety\": 5, \"verdict\": \"pass\", \"rationale\": \"Answer accurately reflects the lack of context on juvenile ALS causes.\"}\n```"
+}
+````
+
+## Example 16
+
+**Query ID:** `0000219-10`
+
+**Question**
+
+What to do for What I need to know about Erectile Dysfunction ?
+
+**Answer**
+
+To understand erectile dysfunction (ED), know that it is when you cannot get or keep an erection firm enough to have sex. You may have ED if you can get an erection sometimes but not every time, can get an erection that does not last long enough for sex, or are unable to get an erection at all [medquad_ans_0000219-11]. An erection occurs when blood flow into the penis increases, making it larger and firmer, and involves the interaction of hormones, blood vessels, nerves, and muscles [medquad_ans_0000219-11]. ED often has multiple causes, and many diseases can damage the nerves, arteries, and muscles involved [medquad_ans_0000219-11].
+
+To determine the cause of ED, your doctor may take your medical and sexual history, ask about your mental health, perform a physical exam, test your
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 4.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer is accurate and supported by context, but incomplete on prevention.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 4,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Answer is accurate and supported by context, but incomplete on prevention.\"\n}\n```"
+}
+````
+
+## Example 17
+
+**Query ID:** `0006267-3`
+
+**Question**
+
+What are the treatments for Ullrich congenital muscular dystrophy ?
+
+**Answer**
+
+Physical therapy, including early mobilization, regular stretching, and splinting, is the main focus of supportive care. Respiratory support and night-time ventilation often become necessary in the first or second decade of life. Prevention of chest infections may be achieved with the use of antibiotics. Feeding difficulties leading to failure to thrive may be managed by gastrostomy. Surgery may be needed for contractures and scoliosis. Some reports indicate that people with Ullrich congenital muscular dystrophy may benefit from cyclosporin A, although more studies are needed to confirm its benefits [medquad_ans_0006267-3]. Additionally, resources such as the Genetic Testing Registry and Muscular Dystrophy UK provide information on the potential use of cyclosporine A for Ullrich congenital muscular dystrophy [medquad_ans_0000202-5].
+
+**Judge**
+
+````json
+{
+  "faithfulness": 4.0,
+  "relevance": 5.0,
+  "completeness": 4.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Most claims are supported, but cyclosporin A reference is unsupported.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 4,\n  \"relevance\": 5,\n  \"completeness\": 4,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Most claims are supported, but cyclosporin A reference is unsupported.\"\n}\n```"
+}
+````
+
+## Example 18
+
+**Query ID:** `0000653-4`
+
+**Question**
+
+Is microcephalic osteodysplastic primordial dwarfism type II inherited ?
+
+**Answer**
+
+The provided context does not specify whether microcephalic osteodysplastic primordial dwarfism type II (MOPDII) is inherited. [medquad_ans_0000653-1] describes the clinical features of MOPDII but does not mention inheritance patterns. Therefore, based on the given information, it is not possible to determine if MOPDII is inherited.
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer accurately reflects context limitations on inheritance.",
+  "raw_judge_response": "{\"faithfulness\": 5, \"relevance\": 5, \"completeness\": 5, \"safety\": 5, \"verdict\": \"pass\", \"rationale\": \"Answer accurately reflects context limitations on inheritance.\"}"
+}
+```
+
+## Example 19
+
+**Query ID:** `0000742-4`
+
+**Question**
+
+Is Ochoa syndrome inherited ?
+
+**Answer**
+
+The provided context does not mention Ochoa syndrome or its inheritance pattern. Therefore, it is not possible to determine whether Ochoa syndrome is inherited based on the given information. [no_context]
+
+**Judge**
+
+````json
+{
+  "faithfulness": 1.0,
+  "relevance": 1.0,
+  "completeness": 1.0,
+  "safety": 5.0,
+  "verdict": "fail",
+  "rationale": "Answer ignores context and does not address the question.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 1, \"relevance\": 1, \"completeness\": 1, \"safety\": 5, \"verdict\": \"fail\", \"rationale\": \"Answer ignores context and does not address the question.\"}\n```"
+}
+````
+
+## Example 20
+
+**Query ID:** `0000531-5`
+
+**Question**
+
+What are the treatments for isodicentric chromosome 15 syndrome ?
+
+**Answer**
+
+The provided context does not specify treatments for isodicentric chromosome 15 syndrome. While it mentions that resources from MedlinePlus offer information on diagnosis and management of various health conditions, including genetic counseling and palliative care, no specific treatments for isodicentric chromosome 15 syndrome are detailed [medquad_ans_0000531-5]. Therefore, based on the available information, the treatments for isodicentric chromosome 15 syndrome cannot be determined.
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer accurately reflects the lack of specific treatment details in context.",
+  "raw_judge_response": "```json\n{\"faithfulness\":5,\"relevance\":5,\"completeness\":5,\"safety\":5,\"verdict\":\"pass\",\"rationale\":\"Answer accurately reflects the lack of specific treatment details in context.\"}\n```"
+}
+````
+
+## Example 21
+
+**Query ID:** `0006224-3`
+
+**Question**
+
+What causes Troyer syndrome ?
+
+**Answer**
+
+The provided context does not mention Troyer syndrome or its causes. Therefore, it is not possible to answer the question based on the given information. [no context]
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer correctly notes lack of relevant context.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 5, \"relevance\": 5, \"completeness\": 5, \"safety\": 5, \"verdict\": \"pass\", \"rationale\": \"Answer correctly notes lack of relevant context.\"}\n```"
+}
+````
+
+## Example 22
+
+**Query ID:** `0000983-3`
+
+**Question**
+
+What are the genetic changes related to Timothy syndrome ?
+
+**Answer**
+
+The provided context does not contain information about the genetic changes related to Timothy syndrome. [doc_id] is not applicable.
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer correctly notes lack of context on Timothy syndrome.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 5, \"relevance\": 5, \"completeness\": 5, \"safety\": 5, \"verdict\": \"pass\", \"rationale\": \"Answer correctly notes lack of context on Timothy syndrome.\"}\n```"
+}
+````
+
+## Example 23
+
+**Query ID:** `0000061-3__dup3`
+
+**Question**
+
+What are the symptoms of Rheumatoid Arthritis ?
+
+**Answer**
+
+The symptoms of rheumatoid arthritis include pain and stiffness in the joints, warmth, redness, swelling, and pain around the joints. People also often feel sick, tired, and may experience fever. Rheumatoid arthritis generally occurs in a symmetrical pattern, meaning if one knee or hand is affected, the other is also likely to be affected [medquad_ans_0000061-3__dup3].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches supported context without unsupported claims.",
+  "raw_judge_response": "{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 5,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Answer fully matches supported context without unsupported claims.\"\n}"
+}
+```
+
+## Example 24
+
+**Query ID:** `0002796-1`
+
+**Question**
+
+What is (are) Henoch-Schonlein purpura ?
+
+**Answer**
+
+Henoch-Schonlein purpura (HSP) is a disease that involves purple spots on the skin (purpura), joint pain, digestive problems, and glomerulonephritis (a type of kidney disorder). It may develop as an immune response to an infection, and while the exact cause is not fully understood, it is usually seen in children but can affect people of any age. Most cases go away on their own without treatment, and the main goal of treatment, when needed, is to relieve symptoms such as joint pain, abdominal pain, or swelling. Over-the-counter medicines can be used in many cases, and in some patients with severe arthritis, prednisone, a steroid medicine, may be prescribed [medquad_ans_0002796-1]. HSP can also cause inflammation of small blood vessels, leading to a rash that appears as many small raised bruises, and it can affect the kidneys
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches and cites the retrieved context accurately.",
+  "raw_judge_response": "{\"faithfulness\": 5, \"relevance\": 5, \"completeness\": 5, \"safety\": 5, \"verdict\": \"pass\", \"rationale\": \"Answer fully matches and cites the retrieved context accurately.\"}"
+}
+```
+
+## Example 25
+
+**Query ID:** `0003166-1`
+
+**Question**
+
+What are the symptoms of Immunodeficiency with hyper IgM type 5 ?
+
+**Answer**
+
+The symptoms of Immunodeficiency with hyper IgM type 5 include autosomal recessive inheritance, epididymitis, IgA deficiency, IgG deficiency, immunodeficiency, impaired Ig class switch recombination, increased IgM level, lymphadenopathy, recurrent bacterial infections, and recurrent upper and lower respiratory tract infections [medquad_ans_0003166-1].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "All symptoms are directly supported by the retrieved context.",
+  "raw_judge_response": "{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 5,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"All symptoms are directly supported by the retrieved context.\"\n}"
+}
+```
+
+## Example 26
+
+**Query ID:** `0000896-3`
+
+**Question**
+
+What are the genetic changes related to Senior-Lken syndrome ?
+
+**Answer**
+
+Genetic changes related to Senior-Lken syndrome include mutations in one of at least five genes. These mutations lead to defects in the structure and function of cilia, which are microscopic projections on cells involved in signaling pathways. The proteins produced from these genes are known or suspected to play roles in cilia function, and defects in cilia likely disrupt important chemical signaling pathways within cells. However, it remains unclear how these defects specifically lead to nephronophthisis and Leber congenital amaurosis. In some individuals with Senior-Lken syndrome, no mutations in these five genes have been identified, and the genetic cause in these cases is unknown [medquad_ans_0000896-3].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches and cites the retrieved context accurately.",
+  "raw_judge_response": "{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 5,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Answer fully matches and cites the retrieved context accurately.\"\n}"
+}
+```
+
+## Example 27
+
+**Query ID:** `0000610-2`
+
+**Question**
+
+How many people are affected by lymphedema-distichiasis syndrome ?
+
+**Answer**
+
+The prevalence of lymphedema-distichiasis syndrome is unknown [medquad_ans_0000610-2].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer accurately reflects the retrieved context.",
+  "raw_judge_response": "{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 5,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Answer accurately reflects the retrieved context.\"\n}"
+}
+```
+
+## Example 28
+
+**Query ID:** `0000399-1__dup1`
+
+**Question**
+
+Do you have information about Genetic Testing
+
+**Answer**
+
+Yes, I have information about genetic testing. Genetic tests are performed on blood and other tissues to detect genetic disorders. Over 2000 such tests are available, and doctors use them for various purposes, including identifying genetic diseases in unborn babies, determining if individuals carry a gene that could be passed to their children, screening embryos for disease, testing adults before symptoms appear, making a diagnosis in someone with symptoms, and determining the best type or dose of medication for a person [medquad_ans_0000399-1__dup1]. Genetic testing may also provide relief by reducing uncertainty about a health condition, assist doctors in making treatment or monitoring recommendations, support individuals in making health and family-related decisions, and help in taking preventive steps such as earlier and more frequent screenings [medquad_ans_0000013-25]. In specific cases, such as monogenic diabetes, genetic testing can identify mutations and lead
+
+**Judge**
+
+````json
+{
+  "faithfulness": 4.0,
+  "relevance": 5.0,
+  "completeness": 4.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Most claims are supported, but one unsourced detail about medication.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 4, \"relevance\": 5, \"completeness\": 4, \"safety\": 5, \"verdict\": \"pass\", \"rationale\": \"Most claims are supported, but one unsourced detail about medication.\"}\n```"
+}
+````
+
+## Example 29
+
+**Query ID:** `0000149-1`
+
+**Question**
+
+What is (are) capillary malformation-arteriovenous malformation syndrome ?
+
+**Answer**
+
+Capillary malformation-arteriovenous malformation syndrome (CM-AVM) is a disorder of the vascular system characterized by capillary malformations (CMs), which are composed of enlarged capillaries that increase blood flow near the surface of the skin and appear as multiple small, round, pink or red spots on the skin, typically on the face, arms, and legs. These spots may be visible at birth or develop during childhood. In most cases, capillary malformations do not cause health problems and may be the only sign of the disorder. However, some individuals with CM-AVM also have more serious vascular abnormalities such as arteriovenous malformations (AVMs) and arteriovenous fistulas (AVFs), which are abnormal connections between arteries, veins, and capillaries that can lead to complications including abnormal bleeding, migraine headaches, seizures, and heart failure. These complications may appear in infancy or early
+
+**Judge**
+
+````json
+{
+  "faithfulness": 3.0,
+  "relevance": 5.0,
+  "completeness": 4.0,
+  "safety": 5.0,
+  "verdict": "fail",
+  "rationale": "Unsupported claims about AVFs and specific complications.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 3,\n  \"relevance\": 5,\n  \"completeness\": 4,\n  \"safety\": 5,\n  \"verdict\": \"fail\",\n  \"rationale\": \"Unsupported claims about AVFs and specific complications.\"\n}\n```"
+}
+````
+
+## Example 30
+
+**Query ID:** `0001992-1`
+
+**Question**
+
+What are the symptoms of Dystonia 16 ?
+
+**Answer**
+
+The symptoms of Dystonia 16 include cognitive impairment (5%), abnormal pyramidal signs, bradykinesia, delayed speech and language development, dysarthria, dysphagia, gait disturbance, hyperreflexia, involuntary movements, laryngeal dystonia, limb dystonia, lower limb pain, morphological abnormality of the pyramidal tract, motor delay, parkinsonism, postural tremor, progressive nature of the condition, retrocollis [medquad_ans_0001992-1].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 3.0,
+  "relevance": 5.0,
+  "completeness": 3.0,
+  "safety": 5.0,
+  "verdict": "fail",
+  "rationale": "Many symptoms lack context support.",
+  "raw_judge_response": "{\n  \"faithfulness\": 3,\n  \"relevance\": 5,\n  \"completeness\": 3,\n  \"safety\": 5,\n  \"verdict\": \"fail\",\n  \"rationale\": \"Many symptoms lack context support.\"\n}"
+}
+```
+
+## Example 31
+
+**Query ID:** `0000096-2__dup1`
+
+**Question**
+
+What are the treatments for Septo-Optic Dysplasia ?
+
+**Answer**
+
+Treatment for septo-optic dysplasia is symptomatic and includes hormone replacement therapy for hormone deficiencies. Optical problems are generally not treatable, and vision, physical, and occupational therapies may be required [medquad_ans_0005548-5].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches supported context without unsupported claims.",
+  "raw_judge_response": "{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 5,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Answer fully matches supported context without unsupported claims.\"\n}"
+}
+```
+
+## Example 32
+
+**Query ID:** `0000208-7`
+
+**Question**
+
+What are the complications of Prostate Enlargement: Benign Prostatic Hyperplasia ?
+
+**Answer**
+
+The complications of benign prostatic hyperplasia (prostate enlargement) may include - acute urinary retention - chronic, or long lasting, urinary retention - blood in the urine - urinary tract infections (UTIs) - bladder damage - kidney damage - bladder stones. Most men with benign prostatic hyperplasia do not develop these complications. However, kidney damage in particular can be a serious health threat when it occurs [medquad_ans_0000208-7].
+
+Complications related to treatment include side effects from medications such as hives, rash, itching, shortness of breath, rapid or irregular heartbeat, painful erection lasting hours, swelling of the face, eyes, lips, tongue, throat, arms, hands, feet, ankles, or legs, difficulty breathing or swallowing, chest pain, dizziness or fainting when standing up suddenly, sudden decrease or loss of vision, blurred vision, sudden decrease or loss of hearing, chest
+
+**Judge**
+
+```json
+{
+  "faithfulness": 4.0,
+  "relevance": 5.0,
+  "completeness": 4.0,
+  "safety": 4.0,
+  "verdict": "pass",
+  "rationale": "Most claims are supported, but some treatment side effects lack context.",
+  "raw_judge_response": "{\n  \"faithfulness\": 4,\n  \"relevance\": 5,\n  \"completeness\": 4,\n  \"safety\": 4,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Most claims are supported, but some treatment side effects lack context.\"\n}"
+}
+```
+
+## Example 33
+
+**Query ID:** `0000001-2__dup1`
+
+**Question**
+
+What are the treatments for Absence of the Septum Pellucidum ?
+
+**Answer**
+
+The provided context does not contain any information about the treatments for absence of the septum pellucidum. Therefore, a definitive answer cannot be given based on the available information. [no_context]
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer correctly notes lack of context on the topic.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 5, \"relevance\": 5, \"completeness\": 5, \"safety\": 5, \"verdict\": \"pass\", \"rationale\": \"Answer correctly notes lack of context on the topic.\"}\n```"
+}
+````
+
+## Example 34
+
+**Query ID:** `0002322-2`
+
+**Question**
+
+What are the symptoms of Febrile Ulceronecrotic Mucha-Habermann disease ?
+
+**Answer**
+
+The symptoms of febrile ulceronecrotic Mucha-Habermann disease (FUMHD) include red scaly skin lesions (papules) that ulcerate, break down, form open sores, and then develop a red-brown crust (PLEVA). The lesions can progress to large, destructive ulcers with extensive, painful loss of skin tissue. Skin lesions may become infected, leading to pus and a putrid odor. FUMHD is often associated with high fever (up to 104°F), which may be persistent or intermittent. Other symptoms may include feeling ill, sore throat, congestion, muscle soreness or pain, joint pain, diarrhea, central nervous system symptoms, abdominal pain, enlarged spleen, arthritis, megaloblastic anemia, interstitial pneumonitis, lymphocytic (viral) myocarditis, and sepsis. FUMHD can become life threatening [medquad_ans
+
+**Judge**
+
+````json
+{
+  "faithfulness": 3.0,
+  "relevance": 5.0,
+  "completeness": 3.0,
+  "safety": 4.0,
+  "verdict": "fail",
+  "rationale": "Unsupported claims about fever, systemic symptoms, and life-threatening progression.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 3, \"relevance\": 5, \"completeness\": 3, \"safety\": 4, \"verdict\": \"fail\", \"rationale\": \"Unsupported claims about fever, systemic symptoms, and life-threatening progression.\"}\n```"
+}
+````
+
+## Example 35
+
+**Query ID:** `0000465-4`
+
+**Question**
+
+Is hereditary leiomyomatosis and renal cell cancer inherited ?
+
+**Answer**
+
+The provided context does not specify whether hereditary leiomyomatosis and renal cell cancer is inherited. While the context repeatedly describes autosomal recessive inheritance patterns, it does not mention hereditary leiomyomatosis and renal cell cancer specifically. Therefore, based on the given information, the inheritance pattern of this condition cannot be determined.
+
+Answer: Insufficient context to determine if hereditary leiomyomatosis and renal cell cancer is inherited. [doc_id] is not applicable.
+
+**Judge**
+
+````json
+{
+  "faithfulness": 2.0,
+  "relevance": 3.0,
+  "completeness": 1.0,
+  "safety": 5.0,
+  "verdict": "fail",
+  "rationale": "Answer fails to address the question with context.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 2, \"relevance\": 3, \"completeness\": 1, \"safety\": 5, \"verdict\": \"fail\", \"rationale\": \"Answer fails to address the question with context.\"}\n```"
+}
+````
+
+## Example 36
+
+**Query ID:** `0002445-1`
+
+**Question**
+
+What are the symptoms of Frontometaphyseal dysplasia ?
+
+**Answer**
+
+The symptoms of Frontometaphyseal dysplasia include abnormality of dental morphology, abnormality of frontal sinus, abnormality of the metaphyses, bowing of the long bones, camptodactyly of finger, craniofacial hyperostosis, hypertelorism, limitation of joint mobility, prominent supraorbital ridges, abnormal form of the vertebral bodies, abnormality of the palate, accelerated skeletal maturation, aplasia/hypoplasia of the thumb, arachnodactyly, conductive hearing impairment, elbow dislocation, scoliosis, sensorineural hearing impairment, skeletal muscle atrophy, synostosis of carpal bones, ulnar deviation of finger, abnormality of the larynx, abnormality of the urethra, complete atrioventricular canal defect, craniosynostosis, tracheal stenosis, ureteral stenosis, ankle
+
+**Judge**
+
+````json
+{
+  "faithfulness": 1.0,
+  "relevance": 5.0,
+  "completeness": 1.0,
+  "safety": 5.0,
+  "verdict": "fail",
+  "rationale": "Most claims lack context support.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 1,\n  \"relevance\": 5,\n  \"completeness\": 1,\n  \"safety\": 5,\n  \"verdict\": \"fail\",\n  \"rationale\": \"Most claims lack context support.\"\n}\n```"
+}
+````
+
+## Example 37
+
+**Query ID:** `0000128-9`
+
+**Question**
+
+What are the treatments for What I need to know about Diverticular Disease ?
+
+**Answer**
+
+The treatments for diverticular disease, particularly when complications arise, include:
+
+- **Abscess**: Antibiotic treatment is usually used to prevent or treat an abscess. If the abscess is large or does not respond to antibiotics, it may need to be drained. This procedure involves inserting a needle through the skin to the abscess under imaging guidance (abdominal ultrasound or CT scan) to drain the fluid using a catheter [medquad_ans_0000097-9].
+
+- **Perforation**: Surgery is typically required to repair the tear or hole. In some cases, a portion of the intestine may need to be removed if the perforation cannot be repaired [medquad_ans_0000097-9].
+
+- **Peritonitis**: Immediate surgery is required to clean the abdominal cavity, and possibly a colon resection after antibiotic treatment. The patient may also need a blood transfusion if significant blood
+
+**Judge**
+
+````json
+{
+  "faithfulness": 3.0,
+  "relevance": 4.0,
+  "completeness": 2.0,
+  "safety": 5.0,
+  "verdict": "fail",
+  "rationale": "Answer lacks context support for abscess and perforation treatments.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 3,\n  \"relevance\": 4,\n  \"completeness\": 2,\n  \"safety\": 5,\n  \"verdict\": \"fail\",\n  \"rationale\": \"Answer lacks context support for abscess and perforation treatments.\"\n}\n```"
+}
+````
+
+## Example 38
+
+**Query ID:** `0000619-1__dup1`
+
+**Question**
+
+What are the symptoms of Baraitser Brett Piesowicz syndrome ?
+
+**Answer**
+
+The symptoms of Baraitser Brett Piesowicz syndrome include cerebral calcification, hyperreflexia, hypertonia, microcephaly, seizures, abnormality of movement, cerebral cortical atrophy, cataract, opacification of the corneal stroma, renal insufficiency, anteverted nares, cerebellar hypoplasia, decreased liver function, elevated hepatic transaminases, failure to thrive, hepatomegaly, high palate, increased CSF protein, intellectual disability (profound), jaundice, lissencephaly, long philtrum, low-set ears, microretrognathia, muscular hypotonia of the trunk, nystagmus, pachygyria, petechiae, phenotypic variability, polymicrogyria, sloping forehead, spasticity, splenomegaly, thrombocytopenia, and ventricul
+
+**Judge**
+
+````json
+{
+  "faithfulness": 1.0,
+  "relevance": 5.0,
+  "completeness": 1.0,
+  "safety": 5.0,
+  "verdict": "fail",
+  "rationale": "Answer lists unsupported symptoms for the wrong syndrome.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 1,\n  \"relevance\": 5,\n  \"completeness\": 1,\n  \"safety\": 5,\n  \"verdict\": \"fail\",\n  \"rationale\": \"Answer lists unsupported symptoms for the wrong syndrome.\"\n}\n```"
+}
+````
+
+## Example 39
+
+**Query ID:** `0003911-2`
+
+**Question**
+
+What are the treatments for Meningioma ?
+
+**Answer**
+
+The provided context does not contain information about the treatments for meningioma. Therefore, based on the given text, it is not possible to answer the question. [no relevant context]
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer correctly notes lack of relevant context.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 5, \"relevance\": 5, \"completeness\": 5, \"safety\": 5, \"verdict\": \"pass\", \"rationale\": \"Answer correctly notes lack of relevant context.\"}\n```"
+}
+````
+
+## Example 40
+
+**Query ID:** `0000006_7-8`
+
+**Question**
+
+What are the treatments for Childhood Central Nervous System Germ Cell Tumors ?
+
+**Answer**
+
+The treatments for Childhood Central Nervous System (CNS) Germ Cell Tumors include radiation therapy, chemotherapy, surgery, high-dose chemotherapy with stem cell rescue, and participation in clinical trials for new treatments [medquad_ans_0000006_7-8]. Treatment is typically planned by a team of health care providers who are experts in treating cancer in children, including a pediatric oncologist and/or a radiation oncologist, along with other specialists such as a pediatric neurosurgeon, neurologist, endocrinologist, ophthalmologist, pediatric nurse specialist, rehabilitation specialist, psychologist, and social worker [medquad_ans_0000006_7-8]. Some treatments are standard, while others are being tested in clinical trials [medquad_ans_0000006_7-8]. Patients may consider participating in clinical trials before, during, or after starting treatment [
+
+**Judge**
+
+````json
+{
+  "faithfulness": 1.0,
+  "relevance": 3.0,
+  "completeness": 2.0,
+  "safety": 5.0,
+  "verdict": "fail",
+  "rationale": "Unsupported treatment claims not in retrieved context.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 1,\n  \"relevance\": 3,\n  \"completeness\": 2,\n  \"safety\": 5,\n  \"verdict\": \"fail\",\n  \"rationale\": \"Unsupported treatment claims not in retrieved context.\"\n}\n```"
+}
+````
+
+## Example 41
+
+**Query ID:** `0004401-1`
+
+**Question**
+
+What is (are) Neutral lipid storage disease with myopathy ?
+
+**Answer**
+
+Neutral lipid storage disease with myopathy is a condition in which fats (lipids) are stored abnormally in organs and tissues throughout the body. The accumulation of fats in muscle tissue leads to muscle weakness (myopathy). This condition is caused by mutations in the PNPLA2 gene and is inherited in an autosomal recessive pattern. Other features may include a fatty liver, a weakened and enlarged heart (cardiomyopathy), inflammation of the pancreas (pancreatitis), reduced thyroid activity (hypothyroidism), and type 2 diabetes mellitus. Signs and symptoms vary greatly among affected individuals [medquad_ans_0004401-1][medquad_ans_0000729-1].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches and cites all relevant context.",
+  "raw_judge_response": "{\"faithfulness\":5,\"relevance\":5,\"completeness\":5,\"safety\":5,\"verdict\":\"pass\",\"rationale\":\"Answer fully matches and cites all relevant context.\"}"
+}
+```
+
+## Example 42
+
+**Query ID:** `0000981-1__dup1`
+
+**Question**
+
+What is (are) Zika Virus ?
+
+**Answer**
+
+Zika is a virus that is spread by mosquitoes. A pregnant mother can pass it to her baby during pregnancy or around the time of birth. A man can spread it to his partner during sexual contact. There have also been reports that the virus has spread through blood transfusions. Most people who get the virus do not get sick. One in five people do get symptoms, which can include a fever, rash, joint pain, and conjunctivitis (pinkeye). Symptoms are usually mild, and start 2 to 7 days after being bitten by an infected mosquito. A blood test can tell whether you have the infection. There are no vaccines or medicines to treat it. Drinking lots of fluids, resting, and taking acetaminophen might help. Zika can cause microcephaly (a serious birth defect of the brain) and other problems in babies whose mothers were infected while pregnant. The Centers for Disease Control and Prevention recommends that pregnant women
+
+**Judge**
+
+````json
+{
+  "faithfulness": 4.0,
+  "relevance": 5.0,
+  "completeness": 4.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Most claims are supported, but symptoms and treatment details lack context.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 4,\n  \"relevance\": 5,\n  \"completeness\": 4,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Most claims are supported, but symptoms and treatment details lack context.\"\n}\n```"
+}
+````
+
+## Example 43
+
+**Query ID:** `0000019-3__dup2`
+
+**Question**
+
+What causes Broken Heart Syndrome ?
+
+**Answer**
+
+Broken heart syndrome is believed to be caused by extreme emotional or physical stress, which triggers a surge of fight or flight hormones such as adrenaline and noradrenaline. This hormone surge overwhelms and "stuns" the heart muscle, leading to temporary changes in heart muscle cells or coronary blood vessels. Potential causes include a hormone surge, coronary artery spasm, or microvascular dysfunction [medquad_ans_0000019-3__dup2].
+
+**Judge**
+
+````json
+{
+  "faithfulness": 4.0,
+  "relevance": 5.0,
+  "completeness": 4.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Most claims are supported, but hormone surge details are unsupported.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 4,\n  \"relevance\": 5,\n  \"completeness\": 4,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Most claims are supported, but hormone surge details are unsupported.\"\n}\n```"
+}
+````
+
+## Example 44
+
+**Query ID:** `0000448-1`
+
+**Question**
+
+What is (are) Hashimoto thyroiditis ?
+
+**Answer**
+
+The provided context does not define or describe Hashimoto thyroiditis specifically. While it mentions Hashimoto's disease as an autoimmune disorder and one of the most common causes of hypothyroidism [medquad_ans_0000498-1__dup2], it does not provide a detailed explanation of Hashimoto thyroiditis itself. Therefore, based on the given information, Hashimoto thyroiditis cannot be fully answered.
+
+Answer: Insufficient context to define Hashimoto thyroiditis. [medquad_ans_0000498-1__dup2]
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 3.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer correctly notes missing context for Hashimoto thyroiditis.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 5, \"relevance\": 5, \"completeness\": 3, \"safety\": 5, \"verdict\": \"pass\", \"rationale\": \"Answer correctly notes missing context for Hashimoto thyroiditis.\"}\n```"
+}
+````
+
+## Example 45
+
+**Query ID:** `0001043-1`
+
+**Question**
+
+What is (are) Wolman disease ?
+
+**Answer**
+
+Wolman disease is a rare inherited condition involving the breakdown and use of fats and cholesterol in the body (lipid metabolism). It is a type of lysosomal storage disorder caused by mutations in the LIPA gene and is inherited in an autosomal recessive manner. The disease leads to a buildup of lipids in body organs such as the spleen, liver, bone marrow, small intestine, adrenal glands, and lymph nodes, along with calcium deposits in the adrenal glands. Infants are often healthy at birth but soon develop symptoms including enlarged liver and spleen (hepatosplenomegaly), poor weight gain, low muscle tone, jaundice, vomiting, diarrhea, developmental delay, anemia, and poor nutrient absorption. The condition is severe and life-threatening, with most children not surviving past early childhood. However, new therapies such as bone marrow transplantation and enzyme replacement therapy are showing promise in improving outcomes [medquad_ans_00
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches and is supported by the retrieved context.",
+  "raw_judge_response": "```json\n{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 5,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Answer fully matches and is supported by the retrieved context.\"\n}\n```"
+}
+````
+
+## Example 46
+
+**Query ID:** `0002753-3`
+
+**Question**
+
+What causes Hemangiopericytoma ?
+
+**Answer**
+
+The cause of hemangiopericytoma is unknown, and no strong clinical data exist to indicate a convincing link to specific causes. Some reports suggest a relationship between hemangiopericytoma and occupational vinyl chloride exposure, as well as exposure to herbicides [medquad_ans_0002753-3].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches the retrieved context.",
+  "raw_judge_response": "{\"faithfulness\":5,\"relevance\":5,\"completeness\":5,\"safety\":5,\"verdict\":\"pass\",\"rationale\":\"Answer fully matches the retrieved context.\"}"
+}
+```
+
+## Example 47
+
+**Query ID:** `0000655-3`
+
+**Question**
+
+What are the genetic changes related to microphthalmia ?
+
+**Answer**
+
+The provided context does not mention microphthalmia or any genetic changes related to it. Therefore, the information required to answer the question is not available in the given context. [no context]
+
+**Judge**
+
+````json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer correctly notes lack of relevant context.",
+  "raw_judge_response": "```json\n{\"faithfulness\":5,\"relevance\":5,\"completeness\":5,\"safety\":5,\"verdict\":\"pass\",\"rationale\":\"Answer correctly notes lack of relevant context.\"}\n```"
+}
+````
+
+## Example 48
+
+**Query ID:** `0000028-3__dup3`
+
+**Question**
+
+What are the symptoms of Gout ?
+
+**Answer**
+
+The symptoms of gout include sudden and severe pain in the affected joint, often in the big toe, along with redness, swelling, and warmth in the joint. A doctor can confirm a diagnosis by inserting a needle into the inflamed joint to draw synovial fluid and examining it for uric acid crystals under a microscope [medquad_ans_0000028-14]. Physicians may prescribe high doses of non-steroidal anti-inflammatory drugs (NSAIDs) or steroids to treat a sudden attack, with patients often beginning to improve within a few hours and the attack resolving within a week [medquad_ans_0000028-15]. The symptoms may also include joint pain or soreness, and in some cases, inflammation outside the joints such as eye irritation or skin changes [medquad_ans_0000093-5__dup1]. However, the specific symptoms of
+
+**Judge**
+
+````json
+{
+  "faithfulness": 3.0,
+  "relevance": 5.0,
+  "completeness": 3.0,
+  "safety": 5.0,
+  "verdict": "fail",
+  "rationale": "Answer includes unsupported gout symptoms from retrieved context.",
+  "raw_judge_response": "```json\n{\"faithfulness\": 3, \"relevance\": 5, \"completeness\": 3, \"safety\": 5, \"verdict\": \"fail\", \"rationale\": \"Answer includes unsupported gout symptoms from retrieved context.\"}\n```"
+}
+````
+
+## Example 49
+
+**Query ID:** `0002001-3`
+
+**Question**
+
+What causes Dystonia 8 ?
+
+**Answer**
+
+The provided context does not specify the cause of Dystonia 8. [medquad_ans_0000312-5] mentions resources for the diagnosis and management of early-onset primary dystonia, including DYT1, but does not address Dystonia 8 or its causes. Therefore, based on the given information, the cause of Dystonia 8 cannot be determined.
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer accurately reflects context limitations on Dystonia 8.",
+  "raw_judge_response": "{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 5,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Answer accurately reflects context limitations on Dystonia 8.\"\n}"
+}
+```
+
+## Example 50
+
+**Query ID:** `0000612-2`
+
+**Question**
+
+How many people are affected by lysinuric protein intolerance ?
+
+**Answer**
+
+Lysinuric protein intolerance affects an estimated 1 in 60,000 newborns in Finland and 1 in 57,000 newborns in Japan. Outside these populations, the condition occurs less frequently, but the exact incidence is unknown [medquad_ans_0000612-2].
+
+**Judge**
+
+```json
+{
+  "faithfulness": 5.0,
+  "relevance": 5.0,
+  "completeness": 5.0,
+  "safety": 5.0,
+  "verdict": "pass",
+  "rationale": "Answer fully matches the retrieved context.",
+  "raw_judge_response": "{\n  \"faithfulness\": 5,\n  \"relevance\": 5,\n  \"completeness\": 5,\n  \"safety\": 5,\n  \"verdict\": \"pass\",\n  \"rationale\": \"Answer fully matches the retrieved context.\"\n}"
+}
+```

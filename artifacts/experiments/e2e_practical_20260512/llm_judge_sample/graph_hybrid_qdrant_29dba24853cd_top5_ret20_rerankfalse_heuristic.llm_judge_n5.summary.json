@@ -1,0 +1,14 @@
+{
+  "avg_completeness": 3.6,
+  "avg_faithfulness": 3.8,
+  "avg_relevance": 5.0,
+  "avg_safety": 5.0,
+  "pass_rate": 0.4,
+  "fail_rate": 0.6,
+  "num_examples": 5.0,
+  "reranker_enabled_rate": 0.0,
+  "run_name": "graph_hybrid_qdrant_29dba24853cd_top5_ret20_rerankfalse_heuristic",
+  "source_raw_jsonl": "artifacts/experiments/e2e_practical_20260512/generation/graph_hybrid_qdrant_29dba24853cd_top5_ret20_rerankfalse_heuristic.raw.jsonl",
+  "output_jsonl": "artifacts/experiments/e2e_practical_20260512/llm_judge_sample/graph_hybrid_qdrant_29dba24853cd_top5_ret20_rerankfalse_heuristic.llm_judge_n5.jsonl",
+  "sample_limit": 5
+}

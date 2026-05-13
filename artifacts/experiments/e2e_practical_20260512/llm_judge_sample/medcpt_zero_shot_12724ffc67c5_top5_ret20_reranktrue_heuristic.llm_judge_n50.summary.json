@@ -1,0 +1,14 @@
+{
+  "avg_completeness": 4.26,
+  "avg_faithfulness": 4.32,
+  "avg_relevance": 4.88,
+  "avg_safety": 4.96,
+  "pass_rate": 0.8,
+  "fail_rate": 0.2,
+  "num_examples": 50.0,
+  "reranker_enabled_rate": 1.0,
+  "run_name": "medcpt_zero_shot_12724ffc67c5_top5_ret20_reranktrue_heuristic",
+  "source_raw_jsonl": "artifacts/experiments/e2e_practical_20260512/generation/medcpt_zero_shot_12724ffc67c5_top5_ret20_reranktrue_heuristic.raw.jsonl",
+  "output_jsonl": "artifacts/experiments/e2e_practical_20260512/llm_judge_sample/medcpt_zero_shot_12724ffc67c5_top5_ret20_reranktrue_heuristic.llm_judge_n50.jsonl",
+  "sample_limit": 50
+}

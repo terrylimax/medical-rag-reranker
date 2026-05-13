@@ -1,0 +1,19 @@
+{
+  "avg_answer_chars": 549.24,
+  "avg_answer_relevance": 0.7380721981721983,
+  "avg_citation_presence_rate": 0.8466666666666667,
+  "avg_context_relevance": 0.7962054427054427,
+  "avg_empty_answer": 0.0,
+  "avg_end_to_end_latency_ms": 8388.93447500343,
+  "avg_generation_latency_ms": 5134.858213469852,
+  "avg_groundedness": 0.6847343266706052,
+  "avg_insufficient_context": 0.043333333333333335,
+  "avg_num_retrieved_docs": 5.0,
+  "avg_rerank_latency_ms": 2140.9938490150184,
+  "avg_retrieval_latency_ms": 1112.862949568468,
+  "avg_supported_citation_rate": 0.66,
+  "avg_unsupported_citation_rate": 0.18666666666666668,
+  "num_examples": 300.0,
+  "reranker_enabled_rate": 1.0,
+  "generation_remote_concurrency": 4.0
+}
