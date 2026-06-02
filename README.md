@@ -24,6 +24,9 @@ Last project-level update: 2026-05-13. The repository includes the latest
 experiment reports for `e2e_practical_20260512` under
 `artifacts/experiments/e2e_practical_20260512/`.
 
+<img width="1219" height="718" alt="Architecture medical-rag-reranker-Architecure (1)" src="https://github.com/user-attachments/assets/e6ff4e15-35c2-407e-9a50-0992b8e682c9" />
+
+
 ## Current Status
 
 Implemented and actively used:
